@@ -1,6 +1,6 @@
 {
   "name": "@zowe/zowe-explorer-api",
-  "version": "2.5.0-SNAPSHOT",
+  "version": "2.12.0-SNAPSHOT",
   "description": "Extensibility API for Zowe Explorer.",
   "publisher": "Zowe",
   "author": "Zowe",
@@ -13,21 +13,78 @@
     "lib"
   ],
   "devDependencies": {
-    "@types/semver": "^7.3.6"
+    "@types/semver": "^7.5.0"
   },
   "dependencies": {
-    "@zowe/cli": "7.6.2",
-    "semver": "^7.3.5"
+    "@types/vscode": "^1.53.2",
+    "@zowe/cli": "^7.18.0",
+    "@zowe/secrets-for-zowe-sdk": "7.18.4",
+    "handlebars": "^4.7.7",
+    "semver": "^7.5.3"
   },
   "scripts": {
-    "build": "yarn clean && tsc -p ./",
-    "test": "echo \"zowe-explorer-api: coming soon.\"",
-    "lint": "concurrently -n \"_eslint_,prettier\" \"eslint . --ext .ts\" \"prettier --check .\"",
-    "lintErrors": "echo \"zowe-explorer-api: coming soon.\"",
+    "build": "yarn check-cli && yarn clean && tsc -p ./ && yarn license",
+    "test:unit": "jest \".*__tests__.*\\.unit\\.test\\.ts\" --coverage",
+    "test": "yarn test:unit",
+    "lint": "concurrently -n \"_eslint_,prettier\" \"eslint .\" \"prettier --check .\"",
+    "lint:html": "eslint . --format html > results/eslint.html",
     "pretty": "prettier --write .",
+    "check-cli": "node scripts/check-cli.js",
     "clean": "rimraf lib",
     "fresh-clone": "yarn clean && rimraf node_modules",
-    "license": "node ../../scripts/license.js",
-    "package": "yarn license && yarn lint && yarn build && npm pack && node ../../scripts/mv-pack.js zowe-zowe-explorer-api tgz"
+    "license": "node ../../scripts/updateLicenses.js",
+    "package": "yarn build && npm pack && node ../../scripts/mv-pack.js zowe-zowe-explorer-api tgz"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "ts",
+      "tsx"
+    ],
+    "testPathIgnorePatterns": [
+      "<rootDir>/src/decorators"
+    ],
+    "watchPathIgnorePatterns": [
+      "<rootDir>/results/unit"
+    ],
+    "transform": {
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "diagnostics": false,
+          "tsconfig": "tsconfig-tests.json"
+        }
+      ]
+    },
+    "testRegex": "__tests__.*\\.(spec|test)\\.ts$",
+    "modulePathIgnorePatterns": [
+      "out/"
+    ],
+    "reporters": [
+      "default",
+      "jest-junit",
+      "jest-stare",
+      "jest-html-reporter"
+    ],
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text",
+      "cobertura"
+    ],
+    "coverageDirectory": "<rootDir>/results/unit/coverage",
+    "preset": "ts-jest"
+  },
+  "jest-html-reporter": {
+    "pageTitle": "Zowe Explorer API Tests",
+    "outputPath": "results/unit/results.html"
+  },
+  "jest-stare": {
+    "resultDir": "results/unit/jest-stare",
+    "coverageLink": "../coverage/lcov-report/index.html"
+  },
+  "jest-junit": {
+    "outputDirectory": "<rootDir>/results/unit",
+    "outputName": "junit.xml"
   }
 }

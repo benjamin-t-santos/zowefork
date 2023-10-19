@@ -1,19 +1,25 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
 import { IJob, imperative } from "@zowe/cli";
 import { IZoweTree } from "./IZoweTree";
+import { FileAttributes } from "../utils/files";
+import { DatasetFilter, NodeSort } from "./sorting";
 
 export type IZoweNodeType = IZoweDatasetTreeNode | IZoweUSSTreeNode | IZoweJobTreeNode;
+
+export enum NodeAction {
+    Download = "download",
+}
 
 /**
  * The base interface for Zowe tree nodes that are implemented by vscode.TreeItem.
@@ -34,6 +40,15 @@ export interface IZoweTreeNode {
      *  A human-readable string describing this item.
      */
     label?: string | vscode.TreeItemLabel;
+    /**
+     * A description for this tree item.
+     */
+    description?: string | boolean;
+    /**
+     * A unique identifier for this tree item.
+     * Used to prevent VScode from losing track of TreeItems in a TreeProvider.
+     */
+    id?: string;
     /**
      * The tooltip text when you hover over this item.
      */
@@ -56,6 +71,18 @@ export interface IZoweTreeNode {
      * This will show action `extension.deleteFolder` only for items with `contextValue` is `folder`.
      */
     contextValue?: string;
+    /**
+     * Any ongoing actions that must be awaited before continuing
+     */
+    ongoingActions?: Record<NodeAction | string, Promise<any>>;
+    /**
+     * whether the node was double-clicked
+     */
+    wasDoubleClicked?: boolean;
+    /**
+     * Sorting method for this node's children
+     */
+    sort?: NodeSort;
     /**
      * Retrieves the node label
      */
@@ -98,6 +125,12 @@ export interface IZoweTreeNode {
     setSessionToChoice(sessionObj: imperative.Session): void;
 }
 
+export type DatasetStats = {
+    user: string;
+    // built from "m4date", "mtime" and "msec" variables from z/OSMF API response
+    modifiedDate: Date;
+};
+
 /**
  * Extended interface for Zowe Dataset tree nodes.
  *
@@ -113,7 +146,14 @@ export interface IZoweDatasetTreeNode extends IZoweTreeNode {
      * Search criteria for a Dataset member search
      */
     memberPattern?: string;
-
+    /**
+     * Additional statistics about this data set
+     */
+    stats?: Partial<DatasetStats>;
+    /**
+     * Filter method for this data set's children
+     */
+    filter?: DatasetFilter;
     /**
      * Retrieves child nodes of this IZoweDatasetTreeNode
      *
@@ -157,6 +197,19 @@ export interface IZoweUSSTreeNode extends IZoweTreeNode {
      * Specific profile name in use with this node
      */
     mProfileName?: string;
+
+    /**
+     * File attributes
+     */
+    attributes?: FileAttributes;
+    /**
+     * Event that fires whenever an existing node is updated.
+     */
+    onUpdateEmitter?: vscode.EventEmitter<IZoweUSSTreeNode>;
+    /**
+     * Event that fires whenever an existing node is updated.
+     */
+    onUpdate?: vscode.Event<IZoweUSSTreeNode>;
     /**
      * Retrieves child nodes of this IZoweUSSTreeNode
      *
@@ -240,6 +293,16 @@ export interface IZoweUSSTreeNode extends IZoweTreeNode {
      * @param {USSTree} ussFileProvider
      */
     saveSearch?(ussFileProvider: IZoweTree<IZoweUSSTreeNode>);
+    /**
+     * uploads selected uss node(s) to from clipboard to mainframe
+     * @deprecated in favor of `pasteUssTree`
+     */
+    copyUssFile?();
+
+    /**
+     * Uploads a tree of USS file(s)/folder(s) to mainframe
+     */
+    pasteUssTree?();
 }
 
 /**
@@ -273,6 +336,15 @@ export interface IZoweJobTreeNode extends IZoweTreeNode {
      * Attribute of Job query
      */
     owner?: string;
+    /**
+     * Job Status i.e "ACTIVE"
+     * Attribute of Job query
+     */
+    status?: string;
+    /**
+     * Returns whether the job node is a filtered search
+     */
+    filtered?: boolean;
     /**
      * Retrieves child nodes of this IZoweJobTreeNode
      *

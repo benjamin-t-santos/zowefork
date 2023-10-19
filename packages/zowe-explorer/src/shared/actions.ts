@@ -1,24 +1,25 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
 import * as globals from "../globals";
 import { openPS } from "../dataset/actions";
-import { IZoweDatasetTreeNode, IZoweUSSTreeNode, IZoweNodeType, IZoweTree } from "@zowe/zowe-explorer-api";
+import { Gui, IZoweDatasetTreeNode, IZoweUSSTreeNode, IZoweNodeType, IZoweTree } from "@zowe/zowe-explorer-api";
 import { Profiles } from "../Profiles";
 import { filterTreeByString } from "../shared/utils";
-import { FilterItem, resolveQuickPickHelper, FilterDescriptor } from "../utils/ProfilesUtils";
+import { FilterItem, FilterDescriptor } from "../utils/ProfilesUtils";
 import * as contextually from "../shared/context";
 import * as nls from "vscode-nls";
 import { getIconById, IconId } from "../generators/icons";
+import { ZoweLogger } from "../utils/LoggerUtils";
 
 // Set up localization
 nls.config({
@@ -34,14 +35,15 @@ const localize: nls.LocalizeFunc = nls.loadMessageBundle();
 export async function searchInAllLoadedItems(
     datasetProvider?: IZoweTree<IZoweDatasetTreeNode>,
     ussFileProvider?: IZoweTree<IZoweUSSTreeNode>
-) {
+): Promise<void> {
+    ZoweLogger.trace("shared.actions.searchInAllLoadedItems called.");
     let pattern: string;
     const items: IZoweNodeType[] = [];
     const qpItems = [];
-    const quickpick = vscode.window.createQuickPick();
+    const quickpick = Gui.createQuickPick();
     quickpick.placeholder = localize("searchHistory.options.prompt", "Enter a filter");
     quickpick.ignoreFocusOut = true;
-    quickpick.onDidChangeValue(async (value) => {
+    quickpick.onDidChangeValue((value) => {
         if (value) {
             quickpick.items = filterTreeByString(value, qpItems);
         } else {
@@ -60,9 +62,7 @@ export async function searchInAllLoadedItems(
     }
 
     if (items.length === 0) {
-        vscode.window.showInformationMessage(
-            localize("searchInAllLoadedItems.noneLoaded", "No items are loaded in the tree.")
-        );
+        Gui.showMessage(localize("searchInAllLoadedItems.noneLoaded", "No items are loaded in the tree."));
         return;
     }
 
@@ -71,9 +71,7 @@ export async function searchInAllLoadedItems(
         if (contextually.isDs(item) || contextually.isPdsNotFav(item) || contextually.isVsam(item)) {
             if (contextually.isDsMember(item)) {
                 qpItem = new FilterItem({
-                    text: `[${item.getSessionNode().label.toString()}]: ${item
-                        .getParent()
-                        .label.toString()}(${item.label.toString()})`,
+                    text: `[${item.getSessionNode().label.toString()}]: ${item.getParent().label.toString()}(${item.label.toString()})`,
                     description: "Data Set Member",
                 });
             } else {
@@ -84,9 +82,7 @@ export async function searchInAllLoadedItems(
             }
             qpItems.push(qpItem);
         } else if (contextually.isUssDirectory(item) || contextually.isText(item) || contextually.isBinary(item)) {
-            const filterItem = `[${item.getProfileName().trim()}]: ${
-                item.getParent().fullPath
-            }/${item.label.toString()}`;
+            const filterItem = `[${item.getProfileName().trim()}]: ${item.getParent().fullPath}/${item.label.toString()}`;
             qpItem = new FilterItem({ text: filterItem, description: "USS" });
             qpItems.push(qpItem);
         }
@@ -94,11 +90,9 @@ export async function searchInAllLoadedItems(
     quickpick.items = [...qpItems];
 
     quickpick.show();
-    const choice = await resolveQuickPickHelper(quickpick);
+    const choice = await Gui.resolveQuickPick(quickpick);
     if (!choice) {
-        vscode.window.showInformationMessage(
-            localize("searchInAllLoadedItems.enterPattern", "You must enter a pattern.")
-        );
+        Gui.showMessage(localize("searchInAllLoadedItems.enterPattern", "You must enter a pattern."));
         return;
     } else {
         pattern = choice.label;
@@ -148,7 +142,7 @@ export async function searchInAllLoadedItems(
 
                 // Open in workspace
                 datasetProvider.addSearchHistory(`${nodeName}(${memberName})`);
-                openPS(member, true, datasetProvider);
+                await openPS(member, true, datasetProvider);
             } else {
                 // PDS & SDS
                 await datasetProvider.getTreeView().reveal(node, { select: true, focus: true, expand: false });
@@ -156,21 +150,17 @@ export async function searchInAllLoadedItems(
                 // If selected node was SDS, open it in workspace
                 if (contextually.isDs(node)) {
                     datasetProvider.addSearchHistory(nodeName);
-                    openPS(node, true, datasetProvider);
+                    await openPS(node, true, datasetProvider);
                 }
             }
         }
     }
 }
 
-export async function openRecentMemberPrompt(
-    datasetTree: IZoweTree<IZoweDatasetTreeNode>,
-    ussTree: IZoweTree<IZoweUSSTreeNode>
-) {
+export async function openRecentMemberPrompt(datasetTree: IZoweTree<IZoweDatasetTreeNode>, ussTree: IZoweTree<IZoweUSSTreeNode>): Promise<void> {
+    ZoweLogger.trace("shared.actions.openRecentMemberPrompt called.");
     if (globals.LOG) {
-        globals.LOG.debug(
-            localize("enterPattern.log.debug.prompt", "Prompting the user to choose a recent member for editing")
-        );
+        ZoweLogger.debug(localize("enterPattern.log.debug.prompt", "Prompting the user to choose a recent member for editing"));
     }
     let pattern: string;
 
@@ -178,35 +168,29 @@ export async function openRecentMemberPrompt(
 
     // Get user selection
     if (fileHistory.length > 0) {
-        const createPick = new FilterDescriptor(
-            localize("memberHistory.option.prompt.open", "Select a recent member to open")
-        );
+        const createPick = new FilterDescriptor(localize("memberHistory.option.prompt.open", "Select a recent member to open"));
         const items: vscode.QuickPickItem[] = fileHistory.map((element) => new FilterItem({ text: element }));
         if (globals.ISTHEIA) {
             const options1: vscode.QuickPickOptions = {
                 placeHolder: localize("memberHistory.options.prompt", "Select a recent member to open"),
             };
 
-            const choice = await vscode.window.showQuickPick([createPick, ...items], options1);
+            const choice = await Gui.showQuickPick([createPick, ...items], options1);
             if (!choice) {
-                vscode.window.showInformationMessage(
-                    localize("enterPattern.pattern", "No selection made. Operation cancelled.")
-                );
+                Gui.showMessage(localize("enterPattern.pattern", "No selection made. Operation cancelled."));
                 return;
             }
             pattern = choice === createPick ? "" : choice.label;
         } else {
-            const quickpick = vscode.window.createQuickPick();
+            const quickpick = Gui.createQuickPick();
             quickpick.items = [createPick, ...items];
             quickpick.placeholder = localize("memberHistory.options.prompt", "Select a recent member to open");
             quickpick.ignoreFocusOut = true;
             quickpick.show();
-            const choice = await resolveQuickPickHelper(quickpick);
+            const choice = await Gui.resolveQuickPick(quickpick);
             quickpick.hide();
             if (!choice || choice === createPick) {
-                vscode.window.showInformationMessage(
-                    localize("enterPattern.pattern", "No selection made. Operation cancelled.")
-                );
+                Gui.showMessage(localize("enterPattern.pattern", "No selection made. Operation cancelled."));
                 return;
             } else if (choice instanceof FilterDescriptor) {
                 pattern = quickpick.value;
@@ -220,9 +204,7 @@ export async function openRecentMemberPrompt(
         if (pattern.indexOf("/") > -1) {
             // USS file was selected
             const filePath = pattern.substring(pattern.indexOf("/"));
-            const sessionNode: IZoweUSSTreeNode = ussTree.mSessionNodes.find(
-                (sessNode) => sessNode.getProfileName() === sessionName
-            );
+            const sessionNode: IZoweUSSTreeNode = ussTree.mSessionNodes.find((sessNode) => sessNode.getProfileName() === sessionName);
             await ussTree.openItemFromPath(filePath, sessionNode);
         } else {
             // Data set was selected
@@ -232,20 +214,17 @@ export async function openRecentMemberPrompt(
             await datasetTree.openItemFromPath(pattern, sessionNode);
         }
     } else {
-        vscode.window.showInformationMessage(localize("getRecentMembers.empty", "No recent members found."));
+        Gui.showMessage(localize("getRecentMembers.empty", "No recent members found."));
         return;
     }
 }
 
-export async function returnIconState(node: IZoweNodeType) {
+export function returnIconState(node: IZoweNodeType): IZoweNodeType {
+    ZoweLogger.trace("shared.actions.returnIconState called.");
     const activePathClosed = getIconById(IconId.sessionActive);
     const activePathOpen = getIconById(IconId.sessionActiveOpen);
     const inactivePathClosed = getIconById(IconId.sessionInactive); // So far, we only ever reference the closed inactive icon, not the open one
-    if (
-        node.iconPath === activePathClosed.path ||
-        node.iconPath === activePathOpen.path ||
-        node.iconPath === inactivePathClosed.path
-    ) {
+    if (node.iconPath === activePathClosed.path || node.iconPath === activePathOpen.path || node.iconPath === inactivePathClosed.path) {
         const sessionIcon = getIconById(IconId.session);
         if (sessionIcon) {
             node.iconPath = sessionIcon.path;
@@ -254,13 +233,14 @@ export async function returnIconState(node: IZoweNodeType) {
     return node;
 }
 
-export async function resetValidationSettings(node: IZoweNodeType, setting: boolean) {
+export function resetValidationSettings(node: IZoweNodeType, setting: boolean): IZoweNodeType {
+    ZoweLogger.trace("shared.actions.resetValidationSettings called.");
     if (setting) {
-        await Profiles.getInstance().enableValidationContext(node);
+        Profiles.getInstance().enableValidationContext(node);
         // Ensure validation status is also reset
         node.contextValue = node.contextValue.replace(/(_Active)/g, "").replace(/(_Inactive)/g, "");
     } else {
-        await Profiles.getInstance().disableValidationContext(node);
+        Profiles.getInstance().disableValidationContext(node);
     }
     return node;
 }

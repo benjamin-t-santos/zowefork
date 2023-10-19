@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
@@ -17,11 +17,19 @@ import * as fs from "fs";
 import * as fsextra from "fs-extra";
 import * as extension from "../../src/extension";
 import * as globals from "../../src/globals";
-import { ValidProfileEnum, ProfilesCache } from "@zowe/zowe-explorer-api";
+import * as tempFolderUtils from "../../src/utils/TempFolder";
+import { Gui, ValidProfileEnum, ProfilesCache } from "@zowe/zowe-explorer-api";
 import { Profiles } from "../../src/Profiles";
 import { ZoweDatasetNode } from "../../src/dataset/ZoweDatasetNode";
-import { createInstanceOfProfileInfo, createIProfile, createTreeView } from "../../__mocks__/mockCreators/shared";
-import { PersistentFilters } from "../../src/PersistentFilters";
+import { createGetConfigMock, createInstanceOfProfileInfo, createIProfile, createTreeView } from "../../__mocks__/mockCreators/shared";
+import { ZoweUSSNode } from "../../src/uss/ZoweUSSNode";
+import { getSelectedNodeList } from "../../src/shared/utils";
+import { SettingsConfig } from "../../src/utils/SettingsConfig";
+import { ZoweExplorerExtender } from "../../src/ZoweExplorerExtender";
+import { DatasetTree } from "../../src/dataset/DatasetTree";
+import { USSTree } from "../../src/uss/USSTree";
+import { ZoweLogger } from "../../src/utils/LoggerUtils";
+import { ZoweSaveQueue } from "../../src/abstract/ZoweSaveQueue";
 
 jest.mock("vscode");
 jest.mock("fs");
@@ -30,6 +38,7 @@ jest.mock("util");
 jest.mock("isbinaryfile");
 
 async function createGlobalMocks() {
+    const mockReadProfilesFromDisk = jest.fn();
     const globalMocks = {
         mockLoadNamedProfile: jest.fn(),
         mockMkdirSync: jest.fn(),
@@ -37,6 +46,7 @@ async function createGlobalMocks() {
         mockGetAllProfileNames: jest.fn(),
         mockReveal: jest.fn(),
         mockCreateTreeView: jest.fn(),
+        mockExecuteCommand: jest.fn(),
         mockRegisterCommand: jest.fn(),
         mockOnDidSaveTextDocument: jest.fn(),
         mockOnDidChangeSelection: jest.fn(),
@@ -72,14 +82,17 @@ async function createGlobalMocks() {
         mockCliProfileManager: jest.fn().mockImplementation(() => {
             return { GetAllProfileNames: globalMocks.mockGetAllProfileNames, Load: globalMocks.mockLoad };
         }),
+        mockReadProfilesFromDisk: mockReadProfilesFromDisk,
         mockImperativeProfileInfo: jest.fn().mockImplementation(() => {
             return {
                 mAppName: "",
                 mCredentials: {},
                 mUSingTeamConfig: true,
-                readProfilesFromDisk: jest.fn(),
+                readProfilesFromDisk: mockReadProfilesFromDisk,
             };
         }),
+        mockSetGlobalSecurityValue: jest.fn(),
+        mockWriteOverridesFile: jest.fn(),
         mockProfCacheProfileInfo: createInstanceOfProfileInfo(),
         mockProfilesCache: new ProfilesCache(zowe.imperative.Logger.getAppLogger()),
         testTreeView: null,
@@ -119,14 +132,14 @@ async function createGlobalMocks() {
             disableValidationContext: jest.fn(),
             enableValidationContext: jest.fn(),
             validationArraySetup: jest.fn(),
+            fetchAllProfiles: jest.fn(),
             getProfileInfo: () => createInstanceOfProfileInfo(),
         },
         mockExtension: null,
         appName: vscode.env.appName,
+        uriScheme: vscode.env.uriScheme,
         expectedCommands: [
             "zowe.extRefresh",
-            "zowe.updateSecureCredentials",
-            "zowe.promptCredentials",
             "zowe.all.config.init",
             "zowe.ds.addSession",
             "zowe.ds.addFavorite",
@@ -151,18 +164,20 @@ async function createGlobalMocks() {
             "zowe.ds.removeFavProfile",
             "zowe.ds.submitJcl",
             "zowe.ds.submitMember",
-            "zowe.ds.showDSAttributes",
+            "zowe.ds.showAttributes",
             "zowe.ds.renameDataSet",
-            "zowe.ds.copyMember",
-            "zowe.ds.copyDataSet",
-            "zowe.ds.pasteMember",
+            "zowe.ds.copyDataSets",
+            "zowe.ds.pasteDataSets",
             "zowe.ds.renameDataSetMember",
             "zowe.ds.hMigrateDataSet",
             "zowe.ds.hRecallDataSet",
+            "zowe.ds.showFileErrorDetails",
             "zowe.ds.disableValidation",
             "zowe.ds.enableValidation",
             "zowe.ds.ssoLogin",
             "zowe.ds.ssoLogout",
+            "zowe.ds.sortBy",
+            "zowe.ds.filterBy",
             "zowe.uss.addFavorite",
             "zowe.uss.removeFavorite",
             "zowe.uss.addSession",
@@ -183,6 +198,7 @@ async function createGlobalMocks() {
             "zowe.uss.uploadDialog",
             "zowe.uss.copyPath",
             "zowe.uss.editFile",
+            "zowe.uss.editAttributes",
             "zowe.uss.saveSearch",
             "zowe.uss.removeSavedSearch",
             "zowe.uss.removeFavProfile",
@@ -190,6 +206,8 @@ async function createGlobalMocks() {
             "zowe.uss.enableValidation",
             "zowe.uss.ssoLogin",
             "zowe.uss.ssoLogout",
+            "zowe.uss.pasteUssFile",
+            "zowe.uss.copyUssFile",
             "zowe.jobs.zosJobsOpenspool",
             "zowe.jobs.deleteJob",
             "zowe.jobs.runModifyCommand",
@@ -198,11 +216,14 @@ async function createGlobalMocks() {
             "zowe.jobs.refreshAllJobs",
             "zowe.jobs.refreshJob",
             "zowe.jobs.refreshSpool",
+            "zowe.jobs.downloadSingleSpool",
+            "zowe.jobs.downloadSingleSpoolBinary",
             "zowe.jobs.addJobsSession",
             "zowe.jobs.setOwner",
             "zowe.jobs.setPrefix",
             "zowe.jobs.removeJobsSession",
             "zowe.jobs.downloadSpool",
+            "zowe.jobs.downloadSpoolBinary",
             "zowe.jobs.getJobJcl",
             "zowe.jobs.setJobSpool",
             "zowe.jobs.search",
@@ -216,6 +237,14 @@ async function createGlobalMocks() {
             "zowe.jobs.enableValidation",
             "zowe.jobs.ssoLogin",
             "zowe.jobs.ssoLogout",
+            "zowe.jobs.startPolling",
+            "zowe.jobs.stopPolling",
+            "zowe.jobs.cancelJob",
+            "zowe.jobs.sortBy",
+            "zowe.manualPoll",
+            "zowe.updateSecureCredentials",
+            "zowe.promptCredentials",
+            "zowe.profileManagement",
             "zowe.openRecentMember",
             "zowe.searchInAllLoadedItems",
             "zowe.ds.deleteProfile",
@@ -241,6 +270,10 @@ async function createGlobalMocks() {
         value: globalMocks.mockRegisterCommand,
         configurable: true,
     });
+    Object.defineProperty(vscode.commands, "executeCommand", {
+        value: globalMocks.mockExecuteCommand,
+        configurable: true,
+    });
     Object.defineProperty(vscode.workspace, "onDidSaveTextDocument", {
         value: globalMocks.mockOnDidSaveTextDocument,
         configurable: true,
@@ -261,6 +294,10 @@ async function createGlobalMocks() {
         value: globalMocks.mockOnDidChangeConfiguration,
         configurable: true,
     });
+    Object.defineProperty(globals, "setGlobalSecurityValue", {
+        value: globalMocks.mockSetGlobalSecurityValue,
+        configurable: true,
+    });
     Object.defineProperty(fs, "readdirSync", { value: globalMocks.mockReaddirSync, configurable: true });
     Object.defineProperty(fs, "createReadStream", { value: globalMocks.mockCreateReadStream, configurable: true });
     Object.defineProperty(vscode, "ConfigurationTarget", { value: globalMocks.enums, configurable: true });
@@ -269,11 +306,11 @@ async function createGlobalMocks() {
     Object.defineProperty(fs, "rmdirSync", { value: globalMocks.mockRmdirSync, configurable: true });
     Object.defineProperty(fs, "readFileSync", { value: globalMocks.mockReadFileSync, configurable: true });
     Object.defineProperty(fsextra, "moveSync", { value: globalMocks.mockMoveSync, configurable: true });
-    Object.defineProperty(vscode.window, "showErrorMessage", {
+    Object.defineProperty(Gui, "errorMessage", {
         value: globalMocks.mockShowErrorMessage,
         configurable: true,
     });
-    Object.defineProperty(vscode.window, "showWarningMessage", {
+    Object.defineProperty(Gui, "warningMessage", {
         value: globalMocks.mockShowWarningMessage,
         configurable: true,
     });
@@ -319,17 +356,16 @@ async function createGlobalMocks() {
     Object.defineProperty(globalMocks.mockIcInstance, "cliHome", { get: globalMocks.mockCliHome });
     Object.defineProperty(vscode.env, "appName", { value: globalMocks.appName, configurable: true });
     Object.defineProperty(vscode, "UIKind", { value: globalMocks.UIKindEnums, configurable: true });
+    Object.defineProperty(vscode, "uriScheme", { value: globalMocks.uriScheme, configurable: true });
     Object.defineProperty(Profiles, "createInstance", {
         value: jest.fn(() => globalMocks.testProfileOps),
     });
     Object.defineProperty(Profiles, "getInstance", {
         value: jest.fn(() => globalMocks.testProfileOps),
     });
-    Object.defineProperty(PersistentFilters, "getDirectValue", {
-        value: jest.fn(() => {
-            return {
-                "zowe.automaticProfileValidation": true,
-            };
+    Object.defineProperty(SettingsConfig, "getDirectValue", {
+        value: createGetConfigMock({
+            "zowe.automaticProfileValidation": true,
         }),
     });
     Object.defineProperty(globalMocks.mockProfilesCache, "getProfileInfo", {
@@ -337,17 +373,37 @@ async function createGlobalMocks() {
             return { value: globalMocks.mockProfCacheProfileInfo, configurable: true };
         }),
     });
+    Object.defineProperty(ZoweExplorerExtender, "showZoweConfigError", { value: jest.fn(), configurable: true });
+    Object.defineProperty(zowe.imperative, "ProfileInfo", {
+        value: globalMocks.mockImperativeProfileInfo,
+        configurable: true,
+    });
+    Object.defineProperty(globals, "LOG", { value: jest.fn(), configurable: true });
+    Object.defineProperty(globals.LOG, "error", { value: jest.fn(), configurable: true });
+    Object.defineProperty(globals.LOG, "debug", { value: jest.fn(), configurable: true });
 
     // Create a mocked extension context
-    // tslint:disable-next-line: no-object-literal-type-assertion
     const mockExtensionCreator = jest.fn(
         () =>
             ({
                 subscriptions: [],
                 extensionPath: path.join(__dirname, ".."),
-            } as vscode.ExtensionContext)
+                extension: {
+                    packageJSON: {
+                        packageInfo: "Zowe Explorer",
+                        version: "2.x.x",
+                    },
+                },
+            } as unknown as vscode.ExtensionContext)
     );
     globalMocks.mockExtension = new mockExtensionCreator();
+
+    Object.defineProperty(ZoweLogger, "initializeZoweLogger", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "error", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "debug", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "warn", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "info", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "trace", { value: jest.fn(), configurable: true });
 
     globalMocks.mockLoadNamedProfile.mockReturnValue(globalMocks.testProfile);
     globalMocks.mockCreateSessCfgFromArgs.mockReturnValue(globalMocks.testSession.ISession);
@@ -370,25 +426,42 @@ async function createGlobalMocks() {
     return globalMocks;
 }
 
+function createBlockMocks(globalMocks: any) {
+    const blockMocks = {
+        rootNode: new ZoweUSSNode("root", vscode.TreeItemCollapsibleState.Collapsed, null, globalMocks.session, null, false, "test", undefined),
+        testNode: null,
+    };
+    blockMocks.testNode = new ZoweUSSNode(
+        globals.DS_PDS_CONTEXT,
+        vscode.TreeItemCollapsibleState.Collapsed,
+        blockMocks.rootNode,
+        null,
+        null,
+        false,
+        "test",
+        undefined
+    );
+
+    blockMocks.rootNode.contextValue = globals.USS_SESSION_CONTEXT;
+    return blockMocks;
+}
+
 describe("Extension Unit Tests", () => {
-    it("Testing that activate correctly executes", async () => {
-        const globalMocks = await createGlobalMocks();
+    const allCommands: Array<{ cmd: string; fun: () => void; toMock: () => void }> = [];
+    let globalMocks;
+    beforeAll(async () => {
+        globalMocks = await createGlobalMocks();
         Object.defineProperty(zowe.imperative, "ProfileInfo", {
             value: globalMocks.mockImperativeProfileInfo,
             configurable: true,
         });
-        // tslint:disable-next-line: no-object-literal-type-assertion
         globalMocks.mockReadFileSync.mockReturnValueOnce('{ "overrides": { "CredentialManager": "Managed by ANO" }}');
         globalMocks.mockExistsSync.mockReturnValueOnce(false);
         globalMocks.mockGetConfiguration.mockReturnValue({
             persistence: true,
-            get: (setting: string) => "",
-            // tslint:disable-next-line: no-empty
-            update: jest.fn(() => {
-                {
-                }
-            }),
-            inspect: (configuration: string) => {
+            get: (_setting: string) => "",
+            update: jest.fn(),
+            inspect: (_configuration: string) => {
                 return {
                     workspaceValue: undefined,
                     globalValue: undefined,
@@ -399,7 +472,6 @@ describe("Extension Unit Tests", () => {
         await extension.activate(globalMocks.mockExtension);
 
         // Check that tree providers are initialized successfully
-        // tslint:disable-next-line: no-magic-numbers
         expect(globalMocks.mockCreateTreeView.mock.calls.length).toBe(3);
         expect(globalMocks.mockCreateTreeView.mock.calls[0][0]).toBe("zowe.ds.explorer");
         expect(globalMocks.mockCreateTreeView.mock.calls[1][0]).toBe("zowe.uss.explorer");
@@ -413,46 +485,95 @@ describe("Extension Unit Tests", () => {
 
         // Checking if commands are registered properly
         expect(globalMocks.mockRegisterCommand.mock.calls.length).toBe(globals.COMMAND_COUNT);
+
         globalMocks.mockRegisterCommand.mock.calls.forEach((call, i) => {
-            expect(globalMocks.mockRegisterCommand.mock.calls[i][1]).toBeInstanceOf(Function);
+            expect(call[0]).toStrictEqual(globalMocks.expectedCommands[i]);
+            expect(call[1]).toBeInstanceOf(Function);
+            allCommands.push({ cmd: call[0], fun: call[1], toMock: jest.fn() });
         });
-        const actualCommands = [];
-        globalMocks.mockRegisterCommand.mock.calls.forEach((call) => {
-            actualCommands.push(call[0]);
-        });
-        expect(actualCommands).toEqual(globalMocks.expectedCommands);
     });
 
-    it("Tests that activate() works correctly for Theia", async () => {
-        const globalMocks = await createGlobalMocks();
+    it("Testing that activate correctly executes", async () => {
+        expect(allCommands.map((c) => c.cmd)).toEqual(globalMocks.expectedCommands);
+    });
 
-        Object.defineProperty(vscode.env, "appName", { value: "Eclipse Theia" });
-        Object.defineProperty(vscode.env, "uiKind", { value: vscode.UIKind.Web });
-        globalMocks.mockExistsSync.mockReset();
-        globalMocks.mockReaddirSync.mockReset();
-        globalMocks.mockExistsSync.mockReturnValueOnce(false);
-        globalMocks.mockGetConfiguration.mockReturnValueOnce({
-            get: (setting: string) => "theia",
-            // tslint:disable-next-line: no-empty
-            update: jest.fn(() => {
-                {
-                }
+    it("Tests that activate() fails when trying to load with an invalid config", async () => {
+        Object.defineProperty(zowe.imperative, "ProfileInfo", {
+            value: jest.fn().mockImplementation(() => {
+                throw new Error("Error in ProfileInfo to break activate function");
             }),
-            inspect: (configuration: string) => {
+            configurable: true,
+        });
+        globalMocks.mockReadFileSync.mockReturnValueOnce('{ "overrides": { "CredentialManager": "Managed by ANO" }}');
+        globalMocks.mockExistsSync.mockReturnValueOnce(false);
+        globalMocks.mockGetConfiguration.mockReturnValue({
+            persistence: true,
+            get: (_setting: string) => "",
+            update: jest.fn(),
+            inspect: (_configuration: string) => {
                 return {
                     workspaceValue: undefined,
                     globalValue: undefined,
                 };
             },
         });
-        globalMocks.mockGetConfiguration.mockReturnValueOnce({
-            get: (setting: string) => "files",
-            // tslint:disable-next-line: no-empty
-            update: jest.fn(() => {
-                {
-                }
-            }),
-            inspect: (configuration: string) => {
+
+        await extension.activate(globalMocks.mockExtension);
+        expect(ZoweExplorerExtender.showZoweConfigError).toHaveBeenCalled();
+    });
+    it("should deactivate the extension", async () => {
+        const spyAwaitAllSaves = jest.spyOn(ZoweSaveQueue, "all");
+        const spyCleanTempDir = jest.spyOn(tempFolderUtils, "cleanTempDir");
+        spyCleanTempDir.mockImplementation(jest.fn());
+        Object.defineProperty(ZoweLogger, "disposeZoweLogger", {
+            value: jest.fn(),
+            configurable: true,
+        });
+        await extension.deactivate();
+        expect(spyAwaitAllSaves).toHaveBeenCalled();
+        expect(spyCleanTempDir).toHaveBeenCalled();
+        // Test that upload operations complete before cleaning temp dir
+        expect(spyAwaitAllSaves.mock.invocationCallOrder[0]).toBeLessThan(spyCleanTempDir.mock.invocationCallOrder[0]);
+        expect(globals.ACTIVATED).toBe(false);
+    });
+
+    async function removeSessionTest(command: string, contextValue: string, providerObject: any) {
+        const testNode: any = {
+            contextValue: contextValue,
+            getProfile: jest.fn(),
+            getParent: jest.fn().mockReturnValue({ getLabel: jest.fn() }),
+            label: "TestNode",
+        };
+        const deleteSessionSpy = jest.spyOn(providerObject.prototype, "deleteSession");
+        const commandFunction = allCommands.find((cmd) => command === cmd.cmd);
+        await (commandFunction as any).fun(testNode, [testNode]);
+        expect(deleteSessionSpy).toHaveBeenCalled();
+    }
+
+    it("zowe.ds.removeSession", async () => {
+        await removeSessionTest("zowe.ds.removeSession", globals.DS_SESSION_CONTEXT, DatasetTree);
+    });
+
+    it("zowe.uss.removeSession", async () => {
+        await removeSessionTest("zowe.uss.removeSession", globals.USS_SESSION_CONTEXT, USSTree);
+    });
+});
+
+describe("Extension Unit Tests - THEIA", () => {
+    it("Tests that activate() works correctly for Theia", async () => {
+        const globalMocks = await createGlobalMocks();
+
+        Object.defineProperty(vscode.env, "appName", { value: "Eclipse Theia" });
+        Object.defineProperty(vscode.env, "uriScheme", { value: "theia" });
+        Object.defineProperty(vscode.env, "uiKind", { value: vscode.UIKind.Web });
+        globalMocks.mockExistsSync.mockReset();
+        globalMocks.mockReaddirSync.mockReset();
+        globalMocks.mockExistsSync.mockReturnValueOnce(false);
+        globalMocks.mockGetConfiguration.mockReturnValue({
+            persistence: true,
+            get: (_setting: string) => "",
+            update: jest.fn(),
+            inspect: (_configuration: string) => {
                 return {
                     workspaceValue: undefined,
                     globalValue: undefined,
@@ -463,16 +584,48 @@ describe("Extension Unit Tests", () => {
         await extension.activate(globalMocks.mockExtension);
 
         expect(globals.ISTHEIA).toEqual(true);
-        // tslint:disable-next-line: no-magic-numbers
-        expect(globalMocks.mockMkdirSync.mock.calls.length).toBe(4);
+        expect(globalMocks.mockMkdirSync.mock.calls.length).toBe(6);
         expect(globalMocks.mockRegisterCommand.mock.calls.length).toBe(globals.COMMAND_COUNT);
         globalMocks.mockRegisterCommand.mock.calls.forEach((call, i) => {
-            expect(globalMocks.mockRegisterCommand.mock.calls[i][1]).toBeInstanceOf(Function);
+            expect(call[0]).toStrictEqual(globalMocks.expectedCommands[i]);
+            expect(call[1]).toBeInstanceOf(Function);
         });
         const actualCommands = [];
         globalMocks.mockRegisterCommand.mock.calls.forEach((call) => {
             actualCommands.push(call[0]);
         });
         expect(actualCommands).toEqual(globalMocks.expectedCommands);
+    });
+
+    // it("Tests that onChangeProfileAction executes the proper profile commands", async () => {
+    //     const globalMocks = await createGlobalMocks();
+    //     Object.defineProperty(vscode.workspace, "fs", {
+    //         value: {
+    //             readFile: jest.fn().mockResolvedValue("somenewdata"),
+    //         },
+    //         configurable: true,
+    //     });
+    //     await extension.onChangeProfileAction(null);
+    //     expect(globalMocks.mockReadProfilesFromDisk).toHaveBeenCalledTimes(1);
+
+    //     // call again w/ same data to signal no change; verify nothing with profiles was changed
+    //     // (number of calls to readProfilesFromDisk should stay the same)
+    //     await extension.onChangeProfileAction(null);
+    //     expect(globalMocks.mockReadProfilesFromDisk).toHaveBeenCalledTimes(1);
+    // });
+
+    it("Tests getSelectedNodeList executes successfully with multiple selection", async () => {
+        const globalMocks = await createGlobalMocks();
+        const blockMocks = createBlockMocks(globalMocks);
+        const nodeList = [blockMocks.rootNode, blockMocks.testNode];
+        const res = getSelectedNodeList(blockMocks.testNode, nodeList);
+        expect(res).toEqual(nodeList);
+    });
+
+    it("Tests getSelectedNodeList executes successfully when no multiple selection", async () => {
+        const globalMocks = await createGlobalMocks();
+        const blockMocks = createBlockMocks(globalMocks);
+        const res = getSelectedNodeList(blockMocks.testNode, undefined);
+        expect(res[0]).toEqual(blockMocks.testNode);
     });
 });

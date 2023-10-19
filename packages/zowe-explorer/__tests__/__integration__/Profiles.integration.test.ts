@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as sinon from "sinon";
@@ -17,7 +17,7 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 import * as testConst from "../../resources/testProfileData";
 
-declare var it: Mocha.ITestDefinition;
+declare let it: Mocha.TestFunction;
 const TIMEOUT = 45000;
 
 const testProfile: imperative.IProfile = {
@@ -177,9 +177,7 @@ describe("Create profiles integration tests", async () => {
 
         const response = await profiles.createNewConnection(testConst.profile.name);
         expect(response).to.equal(undefined);
-        const messageSent = showErrorSpy.calledWith(
-            "Profile name already exists. Please create a profile using a different name"
-        );
+        const messageSent = showErrorSpy.calledWith("Profile name already exists. Please create a profile using a different name");
         expect(messageSent).to.equal(true);
     }).timeout(TIMEOUT);
 });

@@ -1,13 +1,64 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
+
+export enum ViewColumn {
+    /**
+     * A *symbolic* editor column representing the currently active column. This value
+     * can be used when opening editors, but the *resolved* {@link TextEditor.viewColumn viewColumn}-value
+     * of editors will always be `One`, `Two`, `Three`,... or `undefined` but never `Active`.
+     */
+    Active = -1,
+    /**
+     * A *symbolic* editor column representing the column to the side of the active one. This value
+     * can be used when opening editors, but the *resolved* {@link TextEditor.viewColumn viewColumn}-value
+     * of editors will always be `One`, `Two`, `Three`,... or `undefined` but never `Beside`.
+     */
+    Beside = -2,
+    /**
+     * The first editor column.
+     */
+    One = 1,
+    /**
+     * The second editor column.
+     */
+    Two = 2,
+    /**
+     * The third editor column.
+     */
+    Three = 3,
+    /**
+     * The fourth editor column.
+     */
+    Four = 4,
+    /**
+     * The fifth editor column.
+     */
+    Five = 5,
+    /**
+     * The sixth editor column.
+     */
+    Six = 6,
+    /**
+     * The seventh editor column.
+     */
+    Seven = 7,
+    /**
+     * The eighth editor column.
+     */
+    Eight = 8,
+    /**
+     * The ninth editor column.
+     */
+    Nine = 9,
+}
 
 /**
  * A provider result represents the values a provider, like the [`HoverProvider`](#HoverProvider),
@@ -58,10 +109,7 @@ interface Thenable<T> {
         onfulfilled?: (value: T) => TResult | Thenable<TResult>,
         onrejected?: (reason: any) => TResult | Thenable<TResult>
     ): Thenable<TResult>;
-    then<TResult>(
-        onfulfilled?: (value: T) => TResult | Thenable<TResult>,
-        onrejected?: (reason: any) => void
-    ): Thenable<TResult>;
+    then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => void): Thenable<TResult>;
 }
 
 /**
@@ -97,7 +145,121 @@ export namespace extensions {
     }
 }
 
+export interface TreeView<T> {
+    /**
+     * An optional human-readable message that will be rendered in the view.
+     * Setting the message to null, undefined, or empty string will remove the message from the view.
+     */
+    message?: string;
+
+    /**
+     * The tree view title is initially taken from the extension package.json
+     * Changes to the title property will be properly reflected in the UI in the title of the view.
+     */
+    title?: string;
+
+    /**
+     * An optional human-readable description which is rendered less prominently in the title of the view.
+     * Setting the title description to null, undefined, or empty string will remove the description from the view.
+     */
+    description?: string;
+
+    /**
+     * Reveals the given element in the tree view.
+     * If the tree view is not visible then the tree view is shown and element is revealed.
+     *
+     * By default revealed element is selected.
+     * In order to not to select, set the option `select` to `false`.
+     * In order to focus, set the option `focus` to `true`.
+     * In order to expand the revealed element, set the option `expand` to `true`. To expand recursively set `expand` to the number of levels to expand.
+     * **NOTE:** You can expand only to 3 levels maximum.
+     *
+     * **NOTE:** The {@link TreeDataProvider} that the `TreeView` {@link window.createTreeView is registered with} with must implement {@link TreeDataProvider.getParent getParent} method to access this API.
+     */
+    reveal(element: T, options?: { select?: boolean; focus?: boolean; expand?: boolean | number }): Thenable<void>;
+}
+
+export class FileDecoration {
+    /**
+     * A very short string that represents this decoration.
+     */
+    badge?: string;
+
+    /**
+     * A human-readable tooltip for this decoration.
+     */
+    tooltip?: string;
+
+    /**
+     * The color of this decoration.
+     */
+    color?: any;
+
+    /**
+     * A flag expressing that this decoration should be
+     * propagated to its parents.
+     */
+    propagate?: boolean;
+
+    public constructor(badge?: string, tooltip?: string, color?: any) {
+        this.badge = badge;
+        this.tooltip = tooltip;
+        this.color = color;
+    }
+}
+
+export interface FileDecorationProvider {
+    /**
+     * An optional event to signal that decorations for one or many files have changed.
+     *
+     * *Note* that this event should be used to propagate information about children.
+     *
+     * @see {@link EventEmitter}
+     */
+    onDidChangeFileDecorations?: Event<undefined | Uri | Uri[]>;
+
+    /**
+     * Provide decorations for a given uri.
+     *
+     * *Note* that this function is only called when a file gets rendered in the UI.
+     * This means a decoration from a descendent that propagates upwards must be signaled
+     * to the editor via the {@link FileDecorationProvider.onDidChangeFileDecorations onDidChangeFileDecorations}-event.
+     *
+     * @param uri The uri of the file to provide a decoration for.
+     * @param token A cancellation token.
+     * @returns A decoration or a thenable that resolves to such.
+     */
+    provideFileDecoration(uri: Uri, token: CancellationToken): ProviderResult<FileDecoration>;
+}
+
 export namespace window {
+    /**
+     * Options for creating a {@link TreeView}
+     */
+    export interface TreeViewOptions<T> {
+        /**
+         * A data provider that provides tree data.
+         */
+        treeDataProvider: TreeDataProvider<T>;
+
+        /**
+         * Whether to show collapse all action or not.
+         */
+        showCollapseAll?: boolean;
+
+        /**
+         * Whether the tree supports multi-select. When the tree supports multi-select and a command is executed from the tree,
+         * the first argument to the command is the tree item that the command was executed on and the second argument is an
+         * array containing all selected tree items.
+         */
+        canSelectMany?: boolean;
+
+        /**
+         * An optional interface to implement drag and drop in the tree view.
+         */
+        dragAndDropController?: any;
+    }
+
     /**
      * Show an information message to users. Optionally provide an array of items which will be presented as
      * clickable buttons.
@@ -114,8 +276,34 @@ export namespace window {
         return undefined;
     }
 
-    export function setStatusBarMessage(message: string, ...items: string[]): undefined {
-        return undefined;
+    export function setStatusBarMessage(message: string, ...items: string[]): object {
+        return {
+            dispose: () => {},
+        };
+    }
+
+    export function createTreeView<T>(viewId: string, options: TreeViewOptions<T>) {
+        return this;
+    }
+
+    export function registerFileDecorationProvider(provider: FileDecorationProvider) {
+        return this;
+    }
+
+    export function createWebviewPanel(
+        viewType: string,
+        title: string,
+        showOptions: ViewColumn | { viewColumn: ViewColumn; preserveFocus?: boolean },
+        options?: any
+    ): any {
+        return {
+            onDidDispose: jest.fn(),
+            webview: {
+                asWebviewUri: jest.fn(),
+                postMessage: jest.fn(),
+                onDidReceiveMessage: jest.fn(),
+            },
+        };
     }
 
     /**
@@ -147,6 +335,10 @@ export namespace window {
          */
         isCloseAffordance?: boolean;
     }
+
+    export function createOutputChannel(name: string, languageId?: string): any {
+        return {};
+    }
 }
 export namespace commands {
     /**
@@ -162,7 +354,7 @@ export namespace commands {
      * @return Disposable which unregisters this command on disposal.
      */
     export function registerCommand(command: string, callback: (...args: any[]) => any, thisArg?: any): Disposable {
-        return undefined;
+        return undefined as any;
     }
 
     export function executeCommand(command: string): undefined {
@@ -186,6 +378,11 @@ export interface QuickPickOptions {
     placeHolder: string;
     ignoreFocusOut: string;
     canPickMany: string;
+}
+
+export enum QuickPickItemKind {
+    Separator = -1,
+    Default = 0,
 }
 
 /**
@@ -306,6 +503,23 @@ export class TreeItem {
     // constructor(resourceUri: Uri, collapsibleState?: TreeItemCollapsibleState);
 }
 
+export enum ConfigurationTarget {
+    /**
+     * Global configuration
+     */
+    Global = 1,
+
+    /**
+     * Workspace configuration
+     */
+    Workspace = 2,
+
+    /**
+     * Workspace folder configuration
+     */
+    WorkspaceFolder = 3,
+}
+
 /**
  * Collapsible state of the tree item
  */
@@ -362,6 +576,8 @@ export class EventEmitter<T> {
  * the editor-process so that they should be always used instead of nodejs-equivalents.
  */
 export namespace workspace {
+    export function onDidSaveTextDocument<T>(listener: (e: T) => any, thisArgs?: any, disposables?: Disposable[]) {}
+
     export function getConfiguration(configuration: string) {
         return {
             update: () => {
@@ -370,6 +586,7 @@ export namespace workspace {
             inspect: () => {
                 return {};
             },
+            get: () => {},
         };
     }
 
@@ -381,8 +598,8 @@ export namespace workspace {
         };
     }
 
-    export function onWillSaveTextDocument(event) {
-        return Disposable;
+    export function applyEdit() {
+        return true;
     }
 
     /**
@@ -429,6 +646,26 @@ export interface TextDocument {
     fileName?: string;
 }
 
+export class Uri {
+    public static file(path: string): Uri {
+        return Uri.parse(path);
+    }
+    public static parse(value: string, strict?: boolean): Uri {
+        const newUri = new Uri();
+        newUri.path = value;
+
+        return newUri;
+    }
+    public with(_fragment: string): Uri {
+        return this;
+    }
+
+    public path: string;
+    public toString(): string {
+        return this.path;
+    }
+}
+
 /**
  * The clipboard provides read and write access to the system's clipboard.
  */
@@ -438,6 +675,15 @@ export interface Clipboard {
      * @returns A thenable that resolves when writing happened.
      */
     writeText(value: string): Thenable<void>;
+}
+
+export class Position {}
+
+export class Range {}
+
+export class WorkspaceEdit {
+    public delete(uri: Uri, range: Range) {}
+    public insert(uri: Uri, position: Position, newText: string) {}
 }
 
 /**

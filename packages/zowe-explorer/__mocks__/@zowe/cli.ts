@@ -1,21 +1,22 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as path from "path";
 import * as os from "os";
 import { Session } from "../Session";
 import { IListOptions } from "@zowe/cli";
-import * as imperative from "./imperative";
+import * as imperative from "@zowe/imperative";
 
-export * as imperative from "./imperative";
+jest.mock("@zowe/imperative");
+export * as imperative from "@zowe/imperative";
 
 export function getZoweDir(): string {
     const defaultHome = path.join(os.homedir(), ".zowe");
@@ -29,7 +30,10 @@ export function getZoweDir(): string {
     return imperative.ImperativeConfig.instance.cliHome;
 }
 
-// tslint:disable-next-line:no-namespace
+export function getImperativeConfig() {
+    return {};
+}
+
 export namespace ZosmfSession {
     export function createSessCfgFromArgs(cmdArgs: imperative.ICommandArguments) {
         return {
@@ -130,8 +134,11 @@ export declare const enum CreateDataSetTypeEnum {
     DATA_SET_SEQUENTIAL = 4,
 }
 
-// tslint:disable-next-line:no-namespace
 export namespace List {
+    export function dataSetsMatchingPattern(session: Session, hlq: string[], options: IListOptions): Promise<IZosFilesResponse> {
+        return dataSet(session, hlq[0], options);
+    }
+
     export function dataSet(session: Session, hlq: string, options: IListOptions): Promise<IZosFilesResponse> {
         if (hlq.toUpperCase() === "THROW ERROR") {
             throw Error("Throwing an error to check error handling for unit tests!");
@@ -221,7 +228,6 @@ export namespace List {
     }
 }
 
-// tslint:disable-next-line:max-classes-per-file
 export class IZosFilesResponse {
     /**
      * indicates if the command ran successfully.
@@ -239,3 +245,7 @@ export class IZosFilesResponse {
      */
     public apiResponse?: any;
 }
+
+export const ZosmfProfile = {
+    type: "zosmf",
+};

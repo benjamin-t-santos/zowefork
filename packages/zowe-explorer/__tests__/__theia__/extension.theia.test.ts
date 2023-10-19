@@ -1,26 +1,41 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
+import { mkdirSync, rmSync } from "fs";
 import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 import * as driverFirefox from "./theia/extension.theiaFirefox";
 import * as driverChrome from "./theia/extension.theiaChrome";
 
-const TIMEOUT = 45000;
+const TIMEOUT = 60000;
 const SLEEPTIME = 15000;
 const SHORTSLEEPTIME = 2000;
 const wait5sec = 5000;
-declare var it: any;
+const SCREENSHOT_DIR = "./results/integration/failed";
+declare let it: any;
 const expect = chai.expect;
 chai.use(chaiAsPromised);
+
+function screenshotIfFailed(driver: any) {
+    return async function () {
+        if (this.currentTest.state === "failed") {
+            mkdirSync(SCREENSHOT_DIR, { recursive: true });
+            await driver.takeScreenshot(`${SCREENSHOT_DIR}/${this.currentTest.fullTitle()}.png`);
+        }
+    };
+}
+
+before(() => {
+    rmSync(SCREENSHOT_DIR, { recursive: true, force: true });
+});
 
 describe("Locate Tree Nodes", () => {
     before(async () => {
@@ -31,8 +46,10 @@ describe("Locate Tree Nodes", () => {
         await driverFirefox.clickOnZoweExplorer();
     });
 
+    afterEach(screenshotIfFailed(driverFirefox));
+
     it("should open Zowe Explorer and find the Favorites node", async () => {
-        const favoriteLink = await driverFirefox.getFavouritesNode();
+        const favoriteLink = await driverFirefox.getFavoritesNode();
         expect(favoriteLink).to.equal("Favorites");
     }).timeout(TIMEOUT);
 
@@ -62,6 +79,8 @@ describe("Add Default Profile and Profile in DATASETS", () => {
         await driverChrome.sleepTime(SLEEPTIME);
         await driverChrome.clickOnZoweExplorer();
     });
+
+    afterEach(screenshotIfFailed(driverChrome));
 
     it("Should Add Default Profile in DATASETS", async () => {
         await driverChrome.clickOnDatasetsPanel();
@@ -98,6 +117,8 @@ describe("Default profile Visible in USS and JOBS", () => {
         await driverFirefox.sleepTime(wait5sec);
     });
 
+    afterEach(screenshotIfFailed(driverFirefox));
+
     it("Should Default profile visible in USS", async () => {
         await driverFirefox.clickOnDatasetsTab();
         await driverFirefox.clickOnUssTab();
@@ -124,6 +145,8 @@ describe("Add Existing Profiles in USS and JOBS", () => {
         await driverFirefox.clickOnZoweExplorer();
         await driverFirefox.sleepTime(wait5sec);
     });
+
+    afterEach(screenshotIfFailed(driverFirefox));
 
     it("Should Add Existing Profile in USS", async () => {
         await driverFirefox.clickOnDatasetsTab();
@@ -156,12 +179,14 @@ describe("Test Adding and Removing Favorites", () => {
         await driverChrome.clickOnZoweExplorer();
     });
 
+    afterEach(screenshotIfFailed(driverChrome));
+
     it("Should Add Profile to Favorites under DATASETS", async () => {
         await driverChrome.addProfileToFavoritesInDatasets();
         await driverChrome.sleepTime(SHORTSLEEPTIME);
         await driverChrome.clickOnFavoriteTabInDatasets();
         await driverChrome.sleepTime(SHORTSLEEPTIME);
-        const favoriteProfile = await driverChrome.getFavoritePrfileNameFromDatasets();
+        const favoriteProfile = await driverChrome.getFavoriteProfileNameFromDatasets();
         expect(favoriteProfile).to.equal("TestSeleniumProfile");
     });
 
@@ -181,7 +206,7 @@ describe("Test Adding and Removing Favorites", () => {
         await driverChrome.sleepTime(SHORTSLEEPTIME);
         await driverChrome.clickOnFavoriteTabInUss();
         await driverChrome.sleepTime(SHORTSLEEPTIME);
-        const favoriteProfile = await driverChrome.getFavoritePrfileNameFromUss();
+        const favoriteProfile = await driverChrome.getFavoriteProfileNameFromUss();
         expect(favoriteProfile).to.equal("TestSeleniumProfile");
     });
 
@@ -201,7 +226,7 @@ describe("Test Adding and Removing Favorites", () => {
         await driverChrome.sleepTime(SHORTSLEEPTIME);
         await driverChrome.clickOnFavoriteTabInJobs();
         await driverChrome.sleepTime(SHORTSLEEPTIME);
-        const favoriteProfile = await driverChrome.getFavoritePrfileNameFromJobs();
+        const favoriteProfile = await driverChrome.getFavoriteProfileNameFromJobs();
         expect(favoriteProfile).to.equal("TestSeleniumProfile");
     });
 
@@ -223,6 +248,8 @@ describe("Hide Profiles", () => {
         await driverChrome.sleepTime(SLEEPTIME);
         await driverChrome.clickOnZoweExplorer();
     });
+
+    afterEach(screenshotIfFailed(driverChrome));
 
     it("Should Hide Profile from USS", async () => {
         await driverChrome.clickOnDatasetsTab();
@@ -256,6 +283,8 @@ describe("Delete Profiles", () => {
         await driverChrome.sleepTime(SLEEPTIME);
         await driverChrome.clickOnZoweExplorer();
     });
+
+    afterEach(screenshotIfFailed(driverChrome));
 
     it("Should Delete Default Profile from DATA SETS", async () => {
         await driverChrome.deleteDefaultProfileInDatasets();

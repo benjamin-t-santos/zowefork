@@ -1,7 +1,9 @@
 # Zowe Explorer
 
-[![version](https://vsmarketplacebadge.apphb.com/version-short/Zowe.vscode-extension-for-zowe.png)](https://vsmarketplacebadge.apphb.com/version-short/Zowe.vscode-extension-for-zowe.png)
-[![downloads](https://vsmarketplacebadge.apphb.com/downloads-short/Zowe.vscode-extension-for-zowe.png)](https://vsmarketplacebadge.apphb.com/downloads-short/Zowe.vscode-extension-for-zowe.png)
+[![version](https://img.shields.io/visual-studio-marketplace/v/Zowe.vscode-extension-for-zowe.svg)](https://img.shields.io/visual-studio-marketplace/v/Zowe.vscode-extension-for-zowe.svg)
+[![downloads](https://img.shields.io/visual-studio-marketplace/d/Zowe.vscode-extension-for-zowe.svg)](https://img.shields.io/visual-studio-marketplace/d/Zowe.vscode-extension-for-zowe.svg)
+[![codecov](https://codecov.io/gh/zowe/vscode-extension-for-zowe/branch/main/graph/badge.svg)](https://codecov.io/gh/zowe/vscode-extension-for-zowe)
+[![slack](https://img.shields.io/badge/chat-on%20Slack-blue)](https://slack.openmainframeproject.org/)
 
 Welcome to Zowe Explorer! Zowe Explorer brings mainframe capabilities to modern IDEs, such as VS Code. [Zowe](https://www.zowe.org/) is a project hosted by the [Open Mainframe Project](https://www.openmainframeproject.org/), a [Linux Foundation](https://www.linuxfoundation.org/) project.
 
@@ -9,12 +11,12 @@ Join our [Slack channel](https://slack.openmainframeproject.org/) to connect wit
 
 ## Requirements
 
-Client-side prerequisites:
+Client-side prerequisites for development:
 
 - Install [Node.js](https://nodejs.org/en/download/) v14.0 or later.
-- Install [Yarn](https://yarnpkg.com/getting-started/install).
+- Install [Yarn](https://classic.yarnpkg.com) Classic.
 
-Host-side prerequisites:
+Host-side prerequisites for connection:
 
 - Configure TSO/E address space services, z/OS data set, file REST interface and z/OS jobs REST interface. For more information, see [z/OS Requirements](https://docs.zowe.org/stable/user-guide/systemrequirements-zosmf.html#z-os-requirements).
 
@@ -37,7 +39,7 @@ Clone the repository, build a VSIX file, and start working with the extension.
 1. Clone the repository by issuing the following command in your local command-line interface:
 
    ```shell
-   git clone --origin=upstream --branch=main --single-branch https://github.com/zowe/vscode-extension-for-zowe.git
+   git clone https://github.com/zowe/vscode-extension-for-zowe.git
    ```
 
 2. Change directories into the newly-cloned repository:
@@ -62,7 +64,7 @@ Now install the extension to VS Code.
 
 You can now use the extension.
 
-For more information on how to run tests for the extension, see [Developer's ReadMe](https://github.com/zowe/vscode-extension-for-zowe/blob/main/docs/Developer's%20ReadMe.md).
+For more information on how to run tests for the extension, see [Developer Setup](https://github.com/zowe/vscode-extension-for-zowe/wiki/Developer-Setup).
 
 ## Available Documentation
 
@@ -80,9 +82,9 @@ Use the following list with the description and links to find the topics of your
 
 **Note**: Zowe Explorer FTP extension is an example that shows how the extensibility API is used to add new capabilities to Zowe Explorer.
 
-[Zowe Explorer Developer's ReadMe](https://github.com/zowe/vscode-extension-for-zowe/blob/main/docs/README-Developer.md) — contains information on how to install, build, and test Zowe Explorer.
+[Zowe Explorer Developer Setup](https://github.com/zowe/vscode-extension-for-zowe/wiki/Developer-Setup) — contains information on how to install, build, and test Zowe Explorer.
 
-[Zowe Explorer in Theia ReadMe](https://github.com/zowe/vscode-extension-for-zowe/blob/main/docs/README-Theia.md) — contains information on how to develop for the Web-based IDE Eclipse Theia.
+[Zowe Explorer Developing for Theia](https://github.com/zowe/vscode-extension-for-zowe/wiki/Developing-for-Theia) — contains information on how to develop for the Web-based IDE Eclipse Theia.
 
 ## How to Contribute
 
@@ -94,7 +96,7 @@ To report a bug or request a specific feature, please open a GitHub issue using 
 
 Also, you can check our [Zenhub Communities boards](https://github.com/zowe/vscode-extension-for-zowe#workspaces/zowe-cli-explorers-5d77ca38fb288f0001ceae92/board?repos=150100207) for a more convenient view of issues and access to other boards of Zowe-related projects.
 
-For more information on how to contribute, see [Contributor Guidance](https://github.com/zowe/vscode-extension-for-zowe/wiki/Best-Practices:-Contributor-Guidance).
+For more information on how to contribute, see [Contributor Guidance](https://github.com/zowe/vscode-extension-for-zowe/wiki/Contributor-Guidance).
 
 ## External Links
 

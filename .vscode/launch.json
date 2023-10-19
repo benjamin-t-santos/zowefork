@@ -14,14 +14,21 @@
       "outFiles": ["${workspaceFolder}/packages/zowe-explorer/out/**/*.js"],
       "preLaunchTask": "build dev watch",
       "smartStep": true,
-      "skipFiles": ["<node_internals>/**"]
+      "skipFiles": ["<node_internals>/**"],
+      "envFile": "${workspaceFolder}/.vscode/.env"
     },
     {
+      // TODO: This launch-configuration should be updated to run the Theia container locally
+      //       and run through a single suite of tests (Firefox or Chrome)
       "name": "Run Zowe Explorer VS Code Extension (Theia)",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/zowe-explorer", "--verbose"],
+      "args": [
+        "--verbose",
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/zowe-explorer",
+        "--extensionTestsPath=${workspaceFolder}/packages/zowe-explorer/out/__tests__/__theia__/index"
+      ],
       "outFiles": ["${workspaceFolder}/packages/zowe-explorer/out/**/*.js"],
       "smartStep": true
     },
@@ -40,9 +47,9 @@
       "type": "node",
       "name": "Zowe Explorer Unit Tests (Jest)",
       "request": "launch",
-      "program": "${workspaceFolder}/node_modules/jest/bin/jest",
-      "args": ["--runInBand"],
-      "cwd": "${workspaceFolder}/packages/zowe-explorer",
+      "program": "${workspaceFolder}/node_modules/yarn/bin/yarn.js",
+      "args": ["run", "test"],
+      "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "smartStep": true,

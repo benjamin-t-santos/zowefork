@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { ZoweTreeProvider } from "../../src/abstract/ZoweTreeProvider";
@@ -16,6 +16,7 @@ import * as vscode from "vscode";
 import { ValidProfileEnum } from "@zowe/zowe-explorer-api";
 import { FilterDescriptor } from "../../src/utils/ProfilesUtils";
 import { imperative, ZosmfSession } from "@zowe/cli";
+import { SettingsConfig } from "../../src/utils/SettingsConfig";
 
 export function createPersistentConfig() {
     return {
@@ -29,6 +30,94 @@ export function createPersistentConfig() {
         update: jest.fn(() => {
             return {};
         }),
+    };
+}
+
+export function createUnsecureTeamConfigMock() {
+    return {
+        $schema: "./zowe.schema.json",
+        profiles: {
+            zosmf: {
+                type: "zosmf",
+                properties: {
+                    port: 443,
+                },
+            },
+            tso: {
+                type: "tso",
+                properties: {
+                    account: "",
+                    codePage: "1047",
+                    logonProcedure: "IZUFPROC",
+                },
+            },
+            ssh: {
+                type: "ssh",
+                properties: {
+                    port: 22,
+                },
+            },
+            base: {
+                type: "base",
+                properties: {
+                    host: "sample.com",
+                    rejectUnauthorized: true,
+                },
+            },
+        },
+        defaults: {
+            zosmf: "zosmf",
+            tso: "tso",
+            ssh: "ssh",
+            base: "base",
+        },
+        autoStore: false,
+    };
+}
+
+export function createTeamConfigMock() {
+    return {
+        $schema: "./zowe.schema.json",
+        profiles: {
+            zosmf: {
+                type: "zosmf",
+                properties: {
+                    port: 443,
+                },
+                secure: [],
+            },
+            tso: {
+                type: "tso",
+                properties: {
+                    account: "",
+                    codePage: "1047",
+                    logonProcedure: "IZUFPROC",
+                },
+                secure: [],
+            },
+            ssh: {
+                type: "ssh",
+                properties: {
+                    port: 22,
+                },
+                secure: [],
+            },
+            base: {
+                type: "base",
+                properties: {
+                    host: "sample.com",
+                    rejectUnauthorized: true,
+                },
+                secure: ["user", "password"],
+            },
+        },
+        defaults: {
+            zosmf: "zosmf",
+            tso: "tso",
+            ssh: "ssh",
+            base: "base",
+        },
+        autoStore: true,
     };
 }
 
@@ -83,7 +172,7 @@ export function createIProfile(): imperative.IProfileLoaded {
         profile: {
             host: "fake",
             port: 999,
-            user: undefined,
+            user: "testuser",
             password: undefined,
             rejectUnauthorize: false,
         },
@@ -129,6 +218,40 @@ export function createValidIProfile(): imperative.IProfileLoaded {
     };
 }
 
+export function createTokenAuthIProfile(): imperative.IProfileLoaded {
+    return {
+        name: "sestest",
+        profile: {
+            type: "zosmf",
+            host: "test",
+            port: 1443,
+            rejectUnauthorized: false,
+            tokenType: "apimlAuthenticationToken",
+            tokenValue: "stringofletters",
+            name: "testName",
+        },
+        type: "zosmf",
+        message: "",
+        failNotFound: false,
+    };
+}
+
+export function createNoAuthIProfile(): imperative.IProfileLoaded {
+    return {
+        name: "sestest",
+        profile: {
+            type: "zosmf",
+            host: null,
+            port: 1443,
+            rejectUnauthorized: false,
+            name: "testName",
+        },
+        type: "zosmf",
+        message: "",
+        failNotFound: false,
+    };
+}
+
 export function createAltTypeIProfile(): imperative.IProfileLoaded {
     return {
         name: "altTypeProfile",
@@ -157,7 +280,7 @@ export function createTreeView(selection?): vscode.TreeView<ZoweTreeProvider> {
         visible: true,
         onDidChangeVisibility: jest.fn(),
         dispose: jest.fn(),
-    };
+    } as unknown as vscode.TreeView<ZoweTreeProvider>;
 }
 
 export function createTextDocument(name: string, sessionNode?: ZoweDatasetNode | ZoweUSSNode): vscode.TextDocument {
@@ -170,12 +293,12 @@ export function createTextDocument(name: string, sessionNode?: ZoweDatasetNode |
         isDirty: null,
         isClosed: null,
         save: null,
-        eol: null,
+        eol: 1,
         lineCount: null,
         lineAt: null,
         offsetAt: null,
-        positionAt: null,
-        getText: jest.fn(),
+        positionAt: jest.fn(),
+        getText: jest.fn().mockReturnValue(""),
         getWordRangeAtPosition: null,
         validateRange: null,
         validatePosition: null,
@@ -223,6 +346,9 @@ export function createInstanceOfProfile(profile: imperative.IProfileLoaded) {
         getProfileFromConfig: jest.fn(),
         getProfileLoaded: jest.fn(),
         openConfigFile: jest.fn(),
+        fetchAllProfiles: jest.fn(() => {
+            return [{ name: "sestest" }, { name: "profile1" }, { name: "profile2" }];
+        }),
     } as any;
 }
 
@@ -307,11 +433,7 @@ export function createQuickPickItem(): vscode.QuickPickItem {
     return new FilterDescriptor("\uFF0B " + "Create a new filter");
 }
 
-export function createQuickPickContent(
-    entered: any,
-    itemArray: vscode.QuickPickItem[],
-    placeholderString: string
-): any {
+export function createQuickPickContent(entered: any, itemArray: vscode.QuickPickItem[], placeholderString: string): any {
     return {
         placeholder: placeholderString,
         activeItems: itemArray,
@@ -382,6 +504,12 @@ export function createConfigInstance() {
 
 export function createConfigLoad() {
     return {
+        configName: "zowe.config.json",
+        api: {
+            layers: {
+                merge: jest.fn(),
+            },
+        },
         layers: [
             {
                 path: "file://globalPath/.zowe/zowe.config.json",
@@ -398,5 +526,25 @@ export function createConfigLoad() {
                 user: true,
             },
         ],
+        setSchema: jest.fn(),
+        save: jest.fn(),
     } as any;
+}
+
+const originalGetDirectValue = SettingsConfig.getDirectValue;
+export function createGetConfigMock(settings: { [key: string]: any }) {
+    return jest.fn((key: string) => settings[key] ?? originalGetDirectValue(key));
+}
+
+export function createOutputChannel() {
+    return {
+        append: jest.fn(),
+        name: "Zowe Explorer",
+        appendLine: jest.fn(),
+        clear: jest.fn(),
+        show: jest.fn(),
+        hide: jest.fn(),
+        dispose: jest.fn(),
+        replace: jest.fn(),
+    } as vscode.OutputChannel;
 }

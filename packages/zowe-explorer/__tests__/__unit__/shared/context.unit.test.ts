@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { TreeItem } from "vscode";
@@ -41,6 +41,9 @@ describe("Context helper tests", () => {
     const JOBS_SESSION_CONTEXT_FAV = "server_fav";
     const USS_SESSION_CONTEXT_FAV = "uss_session_fav";
     const DS_SESSION_CONTEXT_FAV = "session_fav";
+    const POLL_CONTEXT = "_polling";
+    const VALIDATE_SUFFIX = "_validate";
+    const NO_VALIDATE_SUFFIX = "_noValidate";
 
     const testList: string[] = [
         INFORMATION_CONTEXT,
@@ -66,15 +69,11 @@ describe("Context helper tests", () => {
         JOBS_JOB_FAVORITE1,
         JOBS_JOB_FAVORITE2,
         JOBS_JOB_FAVORITE3,
+        VALIDATE_SUFFIX,
+        NO_VALIDATE_SUFFIX,
     ];
 
-    const testListA: string[] = [
-        DS_FAV_CONTEXT,
-        PDS_FAV_CONTEXT,
-        DS_FAV_TEXT_FILE_CONTEXT,
-        USS_FAV_DIR_CONTEXT,
-        JOBS_JOB_FAVORITE3,
-    ];
+    const testListA: string[] = [DS_FAV_CONTEXT, PDS_FAV_CONTEXT, DS_FAV_TEXT_FILE_CONTEXT, USS_FAV_DIR_CONTEXT, JOBS_JOB_FAVORITE3];
     const testListB: string[] = [
         DS_SESSION_CONTEXT,
         DS_PDS_CONTEXT,
@@ -88,6 +87,27 @@ describe("Context helper tests", () => {
     ];
 
     const treeItem = new TreeItem("Test", 0);
+
+    function callCaseMocksJobSession() {
+        expect(contextually.isSession(treeItem)).toBe(true);
+        expect(contextually.isSessionNotFav(treeItem)).toBe(true);
+        expect(contextually.isUssSession(treeItem)).toBe(false);
+        expect(contextually.isDsSession(treeItem)).toBe(false);
+        expect(contextually.isJobsSession(treeItem)).toBe(true);
+    }
+    function callCaseMocksUssSession() {
+        expect(contextually.isSession(treeItem)).toBe(true);
+        expect(contextually.isSessionNotFav(treeItem)).toBe(true);
+        expect(contextually.isUssSession(treeItem)).toBe(true);
+        expect(contextually.isDsSession(treeItem)).toBe(false);
+        expect(contextually.isJobsSession(treeItem)).toBe(false);
+    }
+    function callCaseMocksDsSession() {
+        expect(contextually.isSessionNotFav(treeItem)).toBe(true);
+        expect(contextually.isDsSession(treeItem)).toBe(true);
+        expect(contextually.isUssSession(treeItem)).toBe(false);
+        expect(contextually.isJobsSession(treeItem)).toBe(false);
+    }
 
     it("Test USS", async () => {
         for (const ctx of testList) {
@@ -177,6 +197,14 @@ describe("Context helper tests", () => {
             expect(contextually.isPdsNotFav(treeItem)).toBe(treeItem.contextValue === DS_PDS_CONTEXT);
         }
     });
+
+    it("Test PDS (regardless of favorite)", async () => {
+        for (const ctx of testList) {
+            treeItem.contextValue = ctx;
+            expect(contextually.isPds(treeItem)).toBe(treeItem.contextValue.indexOf(DS_PDS_CONTEXT) >= 0);
+        }
+    });
+
     it("Test Favorite text or Binary", async () => {
         for (const ctx of testList) {
             treeItem.contextValue = ctx;
@@ -221,6 +249,33 @@ describe("Context helper tests", () => {
             }
         }
     });
+
+    it("Test a spool file", () => {
+        for (const ctx of testList) {
+            treeItem.contextValue = ctx;
+            switch (ctx) {
+                case JOBS_SPOOL_CONTEXT:
+                    expect(contextually.isSpoolFile(treeItem)).toBe(true);
+                    break;
+                default:
+                    expect(contextually.isSpoolFile(treeItem)).toBe(false);
+            }
+        }
+    });
+
+    it("Test items that are being polled", () => {
+        for (const ctx of testList) {
+            treeItem.contextValue = ctx;
+            switch (ctx) {
+                case POLL_CONTEXT:
+                    expect(contextually.isPolling(treeItem)).toBe(true);
+                    break;
+                default:
+                    expect(contextually.isPolling(treeItem)).toBe(false);
+            }
+        }
+    });
+
     it("Test is Favorite", async () => {
         for (const ctx of testList) {
             treeItem.contextValue = ctx;
@@ -264,38 +319,33 @@ describe("Context helper tests", () => {
             treeItem.contextValue = ctx;
             switch (ctx) {
                 case JOBS_SESSION_CONTEXT:
-                    expect(contextually.isSession(treeItem)).toBe(true);
-                    expect(contextually.isSessionNotFav(treeItem)).toBe(true);
-                    expect(contextually.isUssSession(treeItem)).toBe(false);
-                    expect(contextually.isDsSession(treeItem)).toBe(false);
+                    callCaseMocksJobSession();
                     break;
                 case USS_SESSION_CONTEXT:
-                    expect(contextually.isSession(treeItem)).toBe(true);
-                    expect(contextually.isSessionNotFav(treeItem)).toBe(true);
-                    expect(contextually.isUssSession(treeItem)).toBe(true);
-                    expect(contextually.isDsSession(treeItem)).toBe(false);
+                    callCaseMocksUssSession();
                     break;
                 case DS_SESSION_CONTEXT:
-                    expect(contextually.isSessionNotFav(treeItem)).toBe(true);
-                    expect(contextually.isDsSession(treeItem)).toBe(true);
-                    expect(contextually.isUssSession(treeItem)).toBe(false);
+                    callCaseMocksDsSession();
                     break;
                 case JOBS_SESSION_CONTEXT_FAV:
                     expect(contextually.isSession(treeItem)).toBe(true);
                     expect(contextually.isSessionNotFav(treeItem)).toBe(false);
                     expect(contextually.isUssSession(treeItem)).toBe(false);
                     expect(contextually.isDsSession(treeItem)).toBe(false);
+                    expect(contextually.isJobsSession(treeItem)).toBe(true);
                     break;
                 case USS_SESSION_CONTEXT_FAV:
                     expect(contextually.isSession(treeItem)).toBe(true);
                     expect(contextually.isSessionNotFav(treeItem)).toBe(false);
                     expect(contextually.isUssSession(treeItem)).toBe(true);
                     expect(contextually.isDsSession(treeItem)).toBe(false);
+                    expect(contextually.isJobsSession(treeItem)).toBe(false);
                     break;
                 case DS_SESSION_CONTEXT_FAV:
                     expect(contextually.isSessionNotFav(treeItem)).toBe(false);
                     expect(contextually.isDsSession(treeItem)).toBe(true);
                     expect(contextually.isUssSession(treeItem)).toBe(false);
+                    expect(contextually.isJobsSession(treeItem)).toBe(false);
                     break;
                 default:
                     expect(contextually.isSession(treeItem)).toBe(false);
@@ -319,25 +369,42 @@ describe("Context helper tests", () => {
             treeItem.contextValue = ctx;
             switch (ctx) {
                 case JOBS_SESSION_CONTEXT:
-                    expect(contextually.isSessionNotFav(treeItem)).toBe(true);
-                    expect(contextually.isUssSession(treeItem)).toBe(false);
-                    expect(contextually.isDsSession(treeItem)).toBe(false);
+                    callCaseMocksJobSession();
                     break;
                 case USS_SESSION_CONTEXT:
-                    expect(contextually.isSessionNotFav(treeItem)).toBe(true);
-                    expect(contextually.isUssSession(treeItem)).toBe(true);
-                    expect(contextually.isDsSession(treeItem)).toBe(false);
+                    callCaseMocksUssSession();
                     break;
                 case DS_SESSION_CONTEXT:
-                    expect(contextually.isSessionNotFav(treeItem)).toBe(true);
-                    expect(contextually.isDsSession(treeItem)).toBe(true);
-                    expect(contextually.isUssSession(treeItem)).toBe(false);
+                    callCaseMocksDsSession();
                     break;
                 default:
                     expect(contextually.isSessionNotFav(treeItem)).toBe(false);
             }
         }
     });
+
+    it("Test a session with validation enabled", async () => {
+        for (const ctx of testList) {
+            // Test below will verify whether NO_VALIDATE_SUFFIX works
+            if (ctx === NO_VALIDATE_SUFFIX) {
+                continue;
+            }
+            treeItem.contextValue = ctx;
+            expect(contextually.isValidationEnabled(treeItem)).toBe(treeItem.contextValue.includes(VALIDATE_SUFFIX));
+        }
+    });
+
+    it("Test a session with validation disabled", async () => {
+        for (const ctx of testList) {
+            // Test above will verify whether VALIDATE_SUFFIX works
+            if (ctx === VALIDATE_SUFFIX) {
+                continue;
+            }
+            treeItem.contextValue = ctx;
+            expect(contextually.isValidationEnabled(treeItem)).toBe(false);
+        }
+    });
+
     it("Test that this is a folder", async () => {
         for (const ctx of testList) {
             treeItem.contextValue = ctx;
@@ -377,5 +444,9 @@ describe("Context helper tests", () => {
             treeItem.contextValue = contextually.getBaseContext(treeItem);
             expect(contextually.isFavorite(treeItem)).toBe(false);
         }
+    });
+    it("Test contextValue being returned when calling getBaseContext", () => {
+        treeItem.contextValue = "test";
+        expect(contextually.getBaseContext(treeItem)).toEqual(treeItem.contextValue);
     });
 });

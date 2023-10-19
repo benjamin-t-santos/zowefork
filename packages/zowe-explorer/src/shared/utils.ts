@@ -1,30 +1,29 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 // Generic utility functions related to all node types. See ./src/utils.ts for other utility functions.
 
+import * as fs from "fs";
 import * as vscode from "vscode";
 import * as path from "path";
 import * as globals from "../globals";
-import {
-    IZoweTreeNode,
-    IZoweNodeType,
-    IZoweDatasetTreeNode,
-    IZoweUSSTreeNode,
-    IZoweJobTreeNode,
-} from "@zowe/zowe-explorer-api";
+import * as os from "os";
+import { Gui, IZoweTreeNode, IZoweNodeType, IZoweDatasetTreeNode, IZoweUSSTreeNode, IZoweJobTreeNode } from "@zowe/zowe-explorer-api";
 import { ZoweExplorerApiRegister } from "../ZoweExplorerApiRegister";
 import * as nls from "vscode-nls";
 import { IZosFilesResponse, imperative } from "@zowe/cli";
 import { IUploadOptions } from "@zowe/zos-files-for-zowe-sdk";
+import { ZoweLogger } from "../utils/LoggerUtils";
+import { isTypeUssTreeNode } from "./context";
+import { markDocumentUnsaved } from "../utils/workspace";
 
 // Set up localization
 nls.config({
@@ -33,9 +32,25 @@ nls.config({
 })();
 const localize: nls.LocalizeFunc = nls.loadMessageBundle();
 
+export enum JobSubmitDialogOpts {
+    Disabled,
+    YourJobs,
+    OtherUserJobs,
+    AllJobs,
+}
+export const JOB_SUBMIT_DIALOG_OPTS = [
+    localize("zowe.jobs.confirmSubmission.disabled", "Disabled"),
+    localize("zowe.jobs.confirmSubmission.yourJobs", "Your jobs"),
+    localize("zowe.jobs.confirmSubmission.otherUserJobs", "Other user jobs"),
+    localize("zowe.jobs.confirmSubmission.allJobs", "All jobs"),
+];
+
+export const SORT_DIRS: string[] = [localize("sort.asc", "Ascending"), localize("sort.desc", "Descending")];
+
 export function filterTreeByString(value: string, treeItems: vscode.QuickPickItem[]): vscode.QuickPickItem[] {
-    const filteredArray = [];
-    value = value.toUpperCase().replace(".", ".").replace(/\*/g, "(.*)");
+    ZoweLogger.trace("shared.utils.filterTreeByString called.");
+    const filteredArray: vscode.QuickPickItem[] = [];
+    value = value.toUpperCase().replace(/\*/g, "(.*)");
     const regex = new RegExp(value);
     treeItems.forEach((item) => {
         if (item.label.toUpperCase().match(regex)) {
@@ -50,7 +65,10 @@ export function filterTreeByString(value: string, treeItems: vscode.QuickPickIte
  * @param iconFileName {string} Name of icon file with extension
  * @returns {object}
  */
-export function getIconPathInResources(iconFileName: string) {
+export function getIconPathInResources(iconFileName: string): {
+    light: string;
+    dark: string;
+} {
     return {
         light: path.join(globals.ROOTPATH, "resources", "light", iconFileName),
         dark: path.join(globals.ROOTPATH, "resources", "dark", iconFileName),
@@ -60,7 +78,8 @@ export function getIconPathInResources(iconFileName: string) {
 /*************************************************************************************************************
  * Returns array of all subnodes of given node
  *************************************************************************************************************/
-export function concatChildNodes(nodes: IZoweNodeType[]) {
+export function concatChildNodes(nodes: IZoweNodeType[]): IZoweNodeType[] {
+    ZoweLogger.trace("shared.utils.concatChildNodes called.");
     let allNodes = new Array<IZoweNodeType>();
 
     for (const node of nodes) {
@@ -70,28 +89,20 @@ export function concatChildNodes(nodes: IZoweNodeType[]) {
     return allNodes;
 }
 
-/**
- * For no obvious reason a label change is often required to make a node repaint.
- * This function does this by adding or removing a blank.
- * @param {TreeItem} node - the node element
- */
-export function labelRefresh(node: vscode.TreeItem): void {
-    node.label = node.label.toString().endsWith(" ")
-        ? node.label.toString().substring(0, node.label.toString().length - 1)
-        : node.label + " ";
-}
-
-export function sortTreeItems(favorites: vscode.TreeItem[], specificContext) {
+export function sortTreeItems(favorites: vscode.TreeItem[], specificContext): void {
     favorites.sort((a, b) => {
         if (a.contextValue === specificContext) {
             if (b.contextValue === specificContext) {
                 return a.label.toString().toUpperCase() > b.label.toString().toUpperCase() ? 1 : -1;
-            } else {
-                return -1;
             }
-        } else if (b.contextValue === specificContext) {
+
+            return -1;
+        }
+
+        if (b.contextValue === specificContext) {
             return 1;
         }
+
         return a.label.toString().toUpperCase() > b.label.toString().toUpperCase() ? 1 : -1;
     });
 }
@@ -99,7 +110,7 @@ export function sortTreeItems(favorites: vscode.TreeItem[], specificContext) {
 /*************************************************************************************************************
  * Determine IDE name to display based on app environment
  *************************************************************************************************************/
-export function getAppName(isTheia: boolean) {
+export function getAppName(isTheia: boolean): "Theia" | "VS Code" {
     return isTheia ? "Theia" : "VS Code";
 }
 
@@ -110,11 +121,11 @@ export function getAppName(isTheia: boolean) {
  * @param {string} label - If node is a member, label includes the name of the PDS
  * @param {IZoweTreeNode} node
  */
-export function getDocumentFilePath(label: string, node: IZoweTreeNode) {
+export function getDocumentFilePath(label: string, node: IZoweTreeNode): string {
     const dsDir = globals.DS_DIR;
     const profName = node.getProfileName();
     const suffix = appendSuffix(label);
-    return path.join(dsDir, "/" + profName + "/" + suffix);
+    return path.join(dsDir, profName || "", suffix);
 }
 
 /**
@@ -167,7 +178,6 @@ function appendSuffix(label: string): string {
 export function checkForAddedSuffix(filename: string): boolean {
     // identify how close to the end of the string the last . is
     const dotPos = filename.length - (1 + filename.lastIndexOf("."));
-    // tslint:disable-next-line: no-magic-numbers
     return (
         dotPos >= 2 &&
         dotPos <= 4 && // if the last characters are 2 to 4 long and lower case it has been added
@@ -186,7 +196,7 @@ export function checkIfChildPath(parentPath: string, childPath: string): boolean
  * @returns void
  */
 
-export async function markFileAsDirty(doc: vscode.TextDocument): Promise<void> {
+export function markFileAsDirty(doc: vscode.TextDocument): void {
     const docText = doc.getText();
     const startPosition = new vscode.Position(0, 0);
     const endPosition = new vscode.Position(doc.lineCount, 0);
@@ -215,7 +225,10 @@ export async function uploadContent(
         if (prof.profile.encoding) {
             uploadOptions.encoding = prof.profile.encoding;
         }
-        return ZoweExplorerApiRegister.getMvsApi(prof).putContents(doc.fileName, remotePath, uploadOptions);
+        return ZoweExplorerApiRegister.getMvsApi(prof).putContents(doc.fileName, remotePath, {
+            responseTimeout: prof.profile?.responseTimeout,
+            ...uploadOptions,
+        });
     } else {
         // if new api method exists, use it
         if (ZoweExplorerApiRegister.getUssApi(profile).putContent) {
@@ -229,20 +242,14 @@ export async function uploadContent(
                 localEncoding: null,
                 etag: etagToUpload,
                 returnEtag,
-                encoding: profile.profile.encoding,
+                encoding: profile.profile?.encoding,
                 task,
+                responseTimeout: profile.profile?.responseTimeout,
             };
             const result = ZoweExplorerApiRegister.getUssApi(profile).putContent(doc.fileName, remotePath, options);
             return result;
         } else {
-            return ZoweExplorerApiRegister.getUssApi(profile).putContents(
-                doc.fileName,
-                remotePath,
-                binary,
-                null,
-                etagToUpload,
-                returnEtag
-            );
+            return ZoweExplorerApiRegister.getUssApi(profile).putContents(doc.fileName, remotePath, binary, null, etagToUpload, returnEtag);
         }
     }
 }
@@ -250,14 +257,14 @@ export async function uploadContent(
 /**
  * Function that will forcefully upload a file and won't check for matching Etag
  */
-export async function willForceUpload(
+export function willForceUpload(
     node: IZoweDatasetTreeNode | IZoweUSSTreeNode,
     doc: vscode.TextDocument,
     remotePath: string,
     profile?: imperative.IProfileLoaded,
     binary?: boolean,
     returnEtag?: boolean
-): Promise<void> {
+): void {
     // setup to handle both cases (dataset & USS)
     let title: string;
     if (isZoweDatasetTreeNode(node)) {
@@ -266,43 +273,38 @@ export async function willForceUpload(
         title = localize("saveUSSFile.response.title", "Saving file...");
     }
     if (globals.ISTHEIA) {
-        vscode.window.showWarningMessage(
+        Gui.warningMessage(
             localize(
                 "saveFile.error.theiaDetected",
                 "A merge conflict has been detected. Since you are running inside Theia editor, a merge conflict resolution is not available yet."
             )
         );
     }
-    vscode.window
-        .showInformationMessage(
-            localize("saveFile.info.confirmUpload", "Would you like to overwrite the remote file?"),
-            localize("saveFile.overwriteConfirmation.yes", "Yes"),
-            localize("saveFile.overwriteConfirmation.no", "No")
-        )
-        .then(async (selection) => {
-            if (selection === localize("saveFile.overwriteConfirmation.yes", "Yes")) {
-                const uploadResponse = vscode.window.withProgress(
-                    {
-                        location: vscode.ProgressLocation.Notification,
-                        title,
-                    },
-                    () => {
-                        return uploadContent(node, doc, remotePath, profile, binary, null, returnEtag);
-                    }
-                );
-                uploadResponse.then((response) => {
-                    if (response.success) {
-                        vscode.window.showInformationMessage(response.commandResponse);
-                        if (node) {
-                            node.setEtag(response.apiResponse[0].etag);
-                        }
-                    }
-                });
-            } else {
-                vscode.window.showInformationMessage("Upload cancelled.");
-                await markFileAsDirty(doc);
+    // Don't wait for prompt to return since this would block the save queue
+    Gui.infoMessage(localize("saveFile.info.confirmUpload", "Would you like to overwrite the remote file?"), {
+        items: [localize("saveFile.overwriteConfirmation.yes", "Yes"), localize("saveFile.overwriteConfirmation.no", "No")],
+    }).then(async (selection) => {
+        if (selection === localize("saveFile.overwriteConfirmation.yes", "Yes")) {
+            const uploadResponse = await Gui.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title,
+                },
+                () => {
+                    return uploadContent(node, doc, remotePath, profile, binary, null, returnEtag);
+                }
+            );
+            if (uploadResponse.success) {
+                Gui.showMessage(uploadResponse.commandResponse);
+                if (node) {
+                    node.setEtag(uploadResponse.apiResponse[0].etag);
+                }
             }
-        });
+        } else {
+            Gui.showMessage(localize("uploadContent.cancelled", "Upload cancelled."));
+            markFileAsDirty(doc);
+        }
+    });
 }
 
 // Type guarding for current IZoweNodeType.
@@ -311,14 +313,103 @@ export function isZoweDatasetTreeNode(node: IZoweNodeType): node is IZoweDataset
     return (node as IZoweDatasetTreeNode).pattern !== undefined;
 }
 
-export function isZoweUSSTreeNode(
-    node: IZoweDatasetTreeNode | IZoweUSSTreeNode | IZoweJobTreeNode
-): node is IZoweUSSTreeNode {
+export function isZoweUSSTreeNode(node: IZoweDatasetTreeNode | IZoweUSSTreeNode | IZoweJobTreeNode): node is IZoweUSSTreeNode {
     return (node as IZoweUSSTreeNode).openUSS !== undefined;
 }
 
-export function isZoweJobTreeNode(
-    node: IZoweDatasetTreeNode | IZoweUSSTreeNode | IZoweJobTreeNode
-): node is IZoweJobTreeNode {
+export function isZoweJobTreeNode(node: IZoweDatasetTreeNode | IZoweUSSTreeNode | IZoweJobTreeNode): node is IZoweJobTreeNode {
     return (node as IZoweJobTreeNode).job !== undefined;
+}
+
+export function getSelectedNodeList(node: IZoweTreeNode, nodeList: IZoweTreeNode[]): IZoweTreeNode[] {
+    let resultNodeList: IZoweTreeNode[] = [];
+    if (!nodeList) {
+        resultNodeList.push(node);
+    } else {
+        resultNodeList = nodeList;
+    }
+    return resultNodeList;
+}
+
+/**
+ * Function that validates job prefix
+ * @param {string} text - prefix text
+ * @returns undefined | string
+ */
+export function jobStringValidator(text: string, localizedParam: "owner" | "prefix"): string | null {
+    switch (localizedParam) {
+        case "owner":
+            return text.length > globals.JOBS_MAX_PREFIX ? localize("searchJobs.owner.invalid", "Invalid job owner") : null;
+        case "prefix":
+        default:
+            return text.length > globals.JOBS_MAX_PREFIX ? localize("searchJobs.prefix.invalid", "Invalid job prefix") : null;
+    }
+}
+
+export function getDefaultUri(): vscode.Uri {
+    return vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
+}
+
+/**
+ * Function that triggers compare of the old and new document in the active editor
+ * @param {vscode.TextDocument} doc - document to update and compare with previous content
+ * @param {IZoweDatasetTreeNode | IZoweUSSTreeNode} node - IZoweTreeNode
+ * @param {string} label - {optional} used by IZoweDatasetTreeNode to getContents of file
+ * @param {boolean} binary - {optional} used by IZoweUSSTreeNode to getContents of file
+ * @param {imperative.IProfileLoaded} profile - {optional}
+ * @returns {Promise<void>}
+ */
+export async function compareFileContent(
+    doc: vscode.TextDocument,
+    node: IZoweDatasetTreeNode | IZoweUSSTreeNode,
+    label?: string,
+    binary?: boolean,
+    profile?: imperative.IProfileLoaded
+): Promise<void> {
+    await markDocumentUnsaved(doc);
+    const prof = node ? node.getProfile() : profile;
+    let downloadResponse;
+
+    if (isTypeUssTreeNode(node)) {
+        downloadResponse = await ZoweExplorerApiRegister.getUssApi(prof).getContents(node.fullPath, {
+            file: node.getUSSDocumentFilePath(),
+            binary,
+            returnEtag: true,
+            encoding: prof.profile?.encoding,
+            responseTimeout: prof.profile?.responseTimeout,
+        });
+    } else {
+        downloadResponse = await ZoweExplorerApiRegister.getMvsApi(prof).getContents(label, {
+            file: doc.fileName,
+            returnEtag: true,
+            encoding: prof.profile?.encoding,
+            responseTimeout: prof.profile?.responseTimeout,
+        });
+    }
+
+    // If local and remote file size are the same, then VS Code won't detect
+    // there is a conflict and remote changes may get overwritten. To work
+    // around this limitation of VS Code, when the sizes are identical we
+    // temporarily add a trailing newline byte to the local copy which forces
+    // the file size to be different. This is a terrible hack but it works.
+    // See https://github.com/microsoft/vscode/issues/119002
+    const oldSize = doc.getText().length;
+    const newSize = fs.statSync(doc.fileName).size;
+    if (newSize === oldSize) {
+        const edits = new vscode.WorkspaceEdit();
+        edits.insert(doc.uri, doc.positionAt(oldSize), doc.eol.toString());
+        await vscode.workspace.applyEdit(edits);
+    }
+    ZoweLogger.warn(localize("saveFile.etagMismatch.log.warning", "Remote file has changed. Presenting with way to resolve file."));
+    await vscode.commands.executeCommand("workbench.files.action.compareWithSaved");
+    if (newSize === oldSize) {
+        const edits2 = new vscode.WorkspaceEdit();
+        edits2.delete(doc.uri, new vscode.Range(doc.positionAt(oldSize), doc.positionAt(oldSize + doc.eol.toString().length)));
+        await vscode.workspace.applyEdit(edits2);
+    }
+    // re-assign etag, so that it can be used with subsequent requests
+    const downloadEtag = downloadResponse?.apiResponse?.etag;
+    if (node && downloadEtag !== node.getEtag()) {
+        node.setEtag(downloadEtag);
+    }
 }

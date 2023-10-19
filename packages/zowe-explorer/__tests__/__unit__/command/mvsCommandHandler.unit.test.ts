@@ -1,24 +1,26 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 jest.mock("Session");
 
 import * as vscode from "vscode";
-import { ValidProfileEnum } from "@zowe/zowe-explorer-api";
+import { Gui, ValidProfileEnum } from "@zowe/zowe-explorer-api";
 import * as profileLoader from "../../../src/Profiles";
 import { MvsCommandHandler } from "../../../src/command/MvsCommandHandler";
 import * as utils from "../../../src/utils/ProfilesUtils";
 import { imperative } from "@zowe/cli";
 import { ZoweDatasetNode } from "../../../src/dataset/ZoweDatasetNode";
 import { ZoweExplorerApiRegister } from "../../../src/ZoweExplorerApiRegister";
+import * as globals from "../../../src/globals";
+import { ZoweLogger } from "../../../src/utils/LoggerUtils";
 
 describe("mvsCommandActions unit testing", () => {
     const showErrorMessage = jest.fn();
@@ -45,6 +47,8 @@ describe("mvsCommandActions unit testing", () => {
     const qpItem2 = new utils.FilterItem({ text: "/d iplinfo0" });
 
     const mockLoadNamedProfile = jest.fn();
+    Object.defineProperty(globals, "LOG", { value: jest.fn(), configurable: true });
+    Object.defineProperty(globals.LOG, "error", { value: jest.fn(), configurable: true });
     Object.defineProperty(profileLoader.Profiles, "createInstance", {
         value: jest.fn(() => {
             return {
@@ -53,10 +57,11 @@ describe("mvsCommandActions unit testing", () => {
             };
         }),
     });
+    Object.defineProperty(ZoweLogger, "trace", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "error", { value: jest.fn(), configurable: true });
 
     createQuickPick.mockReturnValue({
-        placeholder:
-            'Choose "Create new..." to define a new profile or select an existing profile to add to the Data Set Explorer',
+        placeholder: 'Choose "Create new..." to define a new profile or select an existing profile to add to the Data Set Explorer',
         activeItems: [qpItem2],
         ignoreFocusOut: true,
         items: [qpItem, qpItem2],
@@ -102,15 +107,7 @@ describe("mvsCommandActions unit testing", () => {
         failNotFound: false,
     };
 
-    const testNode = new ZoweDatasetNode(
-        "BRTVS99.DDIR",
-        vscode.TreeItemCollapsibleState.Collapsed,
-        null,
-        session,
-        undefined,
-        undefined,
-        profileOne
-    );
+    const testNode = new ZoweDatasetNode("BRTVS99.DDIR", vscode.TreeItemCollapsibleState.Collapsed, null, session, undefined, undefined, profileOne);
 
     Object.defineProperty(vscode.window, "showErrorMessage", { value: showErrorMessage });
     Object.defineProperty(vscode.window, "showInputBox", { value: showInputBox });
@@ -142,10 +139,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {
@@ -171,7 +165,7 @@ describe("mvsCommandActions unit testing", () => {
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
 
         showInputBox.mockReturnValueOnce("/d iplinfo1");
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem));
         jest.spyOn(mockCommandApi, "issueMvsCommand").mockReturnValue("iplinfo1" as any);
 
         await mvsActions.issueMvsCommand();
@@ -194,10 +188,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {
@@ -217,7 +208,7 @@ describe("mvsCommandActions unit testing", () => {
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
 
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem2));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem2));
         jest.spyOn(mockCommandApi, "issueMvsCommand").mockReturnValue("iplinfo0" as any);
 
         await mvsActions.issueMvsCommand();
@@ -240,10 +231,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {
@@ -264,7 +252,7 @@ describe("mvsCommandActions unit testing", () => {
         const getCommandApiMock = jest.fn();
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem));
         jest.spyOn(mockCommandApi, "issueMvsCommand").mockReturnValue("iplinfo3" as any);
 
         await mvsActions.issueMvsCommand();
@@ -278,17 +266,14 @@ describe("mvsCommandActions unit testing", () => {
         });
         expect(showInputBox.mock.calls.length).toBe(1);
         expect(showErrorMessage.mock.calls.length).toBe(1);
-        expect(showErrorMessage.mock.calls[0][0]).toEqual("fake testError Error: fake testError");
+        expect(showErrorMessage.mock.calls[0][0]).toEqual("Error: fake testError");
     });
 
     it("tests the issueMvsCommand function user escapes the quick pick box", async () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {
@@ -308,7 +293,7 @@ describe("mvsCommandActions unit testing", () => {
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
 
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(undefined));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(undefined));
 
         await mvsActions.issueMvsCommand();
 
@@ -328,10 +313,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {
@@ -351,7 +333,7 @@ describe("mvsCommandActions unit testing", () => {
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
 
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem));
 
         await mvsActions.issueMvsCommand();
 
@@ -371,10 +353,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {
@@ -387,8 +366,7 @@ describe("mvsCommandActions unit testing", () => {
             }),
         });
         createQuickPick.mockReturnValueOnce({
-            placeholder:
-                'Choose "Create new..." to define a new profile or select an existing profile to add to the Data Set Explorer',
+            placeholder: 'Choose "Create new..." to define a new profile or select an existing profile to add to the Data Set Explorer',
             activeItems: [qpItem2],
             ignoreFocusOut: true,
             items: [qpItem, qpItem2],
@@ -412,7 +390,7 @@ describe("mvsCommandActions unit testing", () => {
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
 
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem));
 
         await mvsActions.issueMvsCommand();
 
@@ -449,10 +427,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: undefined, password: undefined } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: undefined, password: undefined } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     validProfile: ValidProfileEnum.VALID,
                     promptCredentials: jest.fn(() => {
@@ -477,7 +452,7 @@ describe("mvsCommandActions unit testing", () => {
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
 
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem));
         jest.spyOn(mockCommandApi, "issueMvsCommand").mockReturnValueOnce({ commandResponse: "fake response" } as any);
 
         await mvsActions.issueMvsCommand();
@@ -496,10 +471,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: undefined, password: undefined } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: undefined, password: undefined } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     validProfile: ValidProfileEnum.VALID,
                     promptCredentials: jest.fn(() => {
@@ -522,7 +494,7 @@ describe("mvsCommandActions unit testing", () => {
         const getCommandApiMock = jest.fn();
         getCommandApiMock.mockReturnValue(mockCommandApi);
         apiRegisterInstance.getCommandApi = getCommandApiMock.bind(apiRegisterInstance);
-        jest.spyOn(utils, "resolveQuickPickHelper").mockImplementation(() => Promise.resolve(qpItem));
+        jest.spyOn(Gui, "resolveQuickPick").mockImplementation(() => Promise.resolve(qpItem));
         jest.spyOn(mockCommandApi, "issueMvsCommand").mockReturnValueOnce({ commandResponse: "fake response" } as any);
 
         await mvsActions.issueMvsCommand();
@@ -541,10 +513,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: undefined, password: undefined } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: undefined, password: undefined } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     validateProfiles: jest.fn(),
                     getBaseProfile: jest.fn(),
@@ -568,10 +537,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     validProfile: ValidProfileEnum.VALID,
                     getBaseProfile: jest.fn(),
@@ -593,10 +559,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     validProfile: ValidProfileEnum.VALID,
                     getBaseProfile: jest.fn(),
@@ -620,5 +583,47 @@ describe("mvsCommandActions unit testing", () => {
 
         expect(showInputBox.mock.calls.length).toBe(1);
         expect(showInformationMessage.mock.calls.length).toBe(0);
+    });
+
+    it("tests the issueMvsCommand handles error thrown by API register", async () => {
+        Object.defineProperty(profileLoader.Profiles, "getInstance", {
+            value: jest.fn(() => {
+                return {
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
+                    defaultProfile: { name: "firstName" },
+                    zosmfProfile: mockLoadNamedProfile,
+                    checkCurrentProfile: jest.fn(() => {
+                        return profilesForValidation;
+                    }),
+                    validateProfiles: jest.fn(),
+                    getBaseProfile: jest.fn(),
+                    validProfile: ValidProfileEnum.VALID,
+                };
+            }),
+        });
+        const mockMvsApi = apiRegisterInstance.getMvsApi(profileOne);
+        const getMvsApiMock = jest.fn();
+        getMvsApiMock.mockReturnValue(mockMvsApi);
+        apiRegisterInstance.getMvsApi = getMvsApiMock.bind(apiRegisterInstance);
+        jest.spyOn(mockMvsApi, "getSession").mockReturnValue(session);
+
+        showQuickPick.mockReturnValueOnce("firstName");
+        const testError = new Error("getCommandApi failed");
+        apiRegisterInstance.getCommandApi = jest.fn().mockImplementation(() => {
+            throw testError;
+        });
+
+        await mvsActions.issueMvsCommand();
+
+        expect(showQuickPick.mock.calls.length).toBe(1);
+        expect(showQuickPick.mock.calls[0][0]).toEqual(["firstName", "secondName"]);
+        expect(showQuickPick.mock.calls[0][1]).toEqual({
+            canPickMany: false,
+            ignoreFocusOut: true,
+            placeHolder: "Select the Profile to use to submit the command",
+        });
+        expect(showInputBox.mock.calls.length).toBe(0);
+        expect(showErrorMessage.mock.calls.length).toBe(1);
+        expect(showErrorMessage.mock.calls[0][0]).toContain(testError.message);
     });
 });

@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as PromiseQueue from "promise-queue";
@@ -16,6 +16,7 @@ import * as fs from "fs";
 import * as globals from "./globals";
 import * as vscode from "vscode";
 import {
+    Gui,
     ZoweExplorerApi,
     ZoweExplorerTreeApi,
     IZoweTree,
@@ -29,12 +30,13 @@ import {
 } from "@zowe/zowe-explorer-api";
 import { Profiles } from "./Profiles";
 import { ZoweExplorerApiRegister } from "./ZoweExplorerApiRegister";
-import { getProfileInfo, getProfile } from "./utils/ProfilesUtils";
+import { getProfile, ProfilesUtils } from "./utils/ProfilesUtils";
+import { ZoweLogger } from "./utils/LoggerUtils";
 
 // Set up localization
-// import * as nls from "vscode-nls";
-// nls.config({ messageFormat: nls.MessageFormat.bundle, bundleFormat: nls.BundleFormat.standalone })();
-// const localize: nls.LocalizeFunc = nls.loadMessageBundle();
+import * as nls from "vscode-nls";
+nls.config({ messageFormat: nls.MessageFormat.bundle, bundleFormat: nls.BundleFormat.standalone })();
+const localize: nls.LocalizeFunc = nls.loadMessageBundle();
 
 /**
  * The Zowe Explorer API Register singleton that gets exposed to other VS Code
@@ -43,6 +45,67 @@ import { getProfileInfo, getProfile } from "./utils/ProfilesUtils";
  */
 export class ZoweExplorerExtender implements ZoweExplorerApi.IApiExplorerExtender, ZoweExplorerTreeApi {
     public static ZoweExplorerExtenderInst: ZoweExplorerExtender;
+
+    /**
+     * Shows an error when the Zowe configs are improperly configured, as well as
+     * an option to show the config.
+     *
+     * @param errorDetails Details of the error (to be parsed for config name and path)
+     */
+    public static showZoweConfigError(errorDetails: string): void {
+        Gui.errorMessage(
+            localize("initialize.profiles.error", 'Error encountered when loading your Zowe config. Click "Show Config" for more details.'),
+            { items: ["Show Config"] }
+        ).then((selection) => {
+            if (selection !== "Show Config") {
+                return;
+            }
+
+            // Parse the v2 config path, or a v1 config path depending on the error message
+            const configMatch = errorDetails.includes("Error parsing JSON in the file")
+                ? errorDetails.match(/Error parsing JSON in the file '(.+?)'/)
+                : errorDetails.match(/Error reading profile file \("(.+?)"\)/);
+
+            let configPath = configMatch != null ? configMatch[1] : null;
+            // If configPath is null, build a v2 config location based on the error details
+            if (configPath == null) {
+                const isRootConfigError = errorDetails.match(/(?:[\\]{1,2}|\/)(\.zowe)(?:[\\]{1,2}|\/)/) != null;
+                // If the v2 config error does not apply to the global Zowe config, check for a project-level config.
+                if (vscode.workspace.workspaceFolders != null && !isRootConfigError) {
+                    configPath = this.getConfigLocation(vscode.workspace.workspaceFolders[0].uri.fsPath);
+                } else {
+                    configPath = this.getConfigLocation(getZoweDir());
+                }
+
+                // If the config w/ culprits cannot be found, all v2 config locations have been exhausted - exit.
+                if (configPath == null) {
+                    return;
+                }
+            }
+            Gui.showTextDocument(vscode.Uri.file(configPath));
+        });
+    }
+
+    /**
+     * Returns the location of a Zowe config (if it exists) relative to rootPath.
+     * @param rootPath The root path to check for Zowe configs
+     */
+    public static getConfigLocation(rootPath: string): string | null {
+        // First check for a user-specific v2 config
+        let location = path.join(rootPath, "zowe.config.user.json");
+        if (fs.existsSync(location)) {
+            return location;
+        }
+
+        // Fallback to regular v2 config if user-specific config doesn't exist
+        location = path.join(rootPath, "zowe.config.json");
+
+        if (fs.existsSync(location)) {
+            return location;
+        }
+
+        return null;
+    }
 
     /**
      * Access the singleton instance.
@@ -87,10 +150,7 @@ export class ZoweExplorerExtender implements ZoweExplorerApi.IApiExplorerExtende
      * @param {string} profileType
      * @param {imperative.ICommandProfileTypeConfiguration[]} profileTypeConfigurations
      */
-    public async initForZowe(
-        profileType: string,
-        profileTypeConfigurations?: zowe.imperative.ICommandProfileTypeConfiguration[]
-    ) {
+    public async initForZowe(profileType: string, profileTypeConfigurations?: zowe.imperative.ICommandProfileTypeConfiguration[]): Promise<void> {
         // Ensure that when a user has not installed the profile type's CLI plugin
         // and/or created a profile that the profile directory in ~/.zowe/profiles
         // will be created with the appropriate meta data. If not called the user will
@@ -104,10 +164,9 @@ export class ZoweExplorerExtender implements ZoweExplorerApi.IApiExplorerExtende
          * profile management.
          */
         let usingTeamConfig: boolean;
-        let mProfileInfo: zowe.imperative.ProfileInfo;
         try {
-            mProfileInfo = await getProfileInfo(globals.ISTHEIA);
-            if (vscode.workspace.workspaceFolders) {
+            const mProfileInfo = await ProfilesUtils.getProfileInfo(globals.ISTHEIA);
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]) {
                 const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
                 await mProfileInfo.readProfilesFromDisk({ homeDir: zoweDir, projectDir: getFullPath(rootPath) });
             } else {
@@ -115,9 +174,11 @@ export class ZoweExplorerExtender implements ZoweExplorerApi.IApiExplorerExtende
             }
             usingTeamConfig = mProfileInfo.usingTeamConfig;
         } catch (error) {
+            ZoweLogger.warn(error);
             if (error.toString().includes("Error parsing JSON")) {
                 usingTeamConfig = true;
             }
+            ZoweExplorerExtender.showZoweConfigError(error.message);
         }
 
         if (profileTypeConfigurations && !usingTeamConfig) {
@@ -130,10 +191,8 @@ export class ZoweExplorerExtender implements ZoweExplorerApi.IApiExplorerExtende
                 });
             }
         }
-        // add extender config info to global variable
-        profileTypeConfigurations?.forEach((item) => {
-            globals.EXTENDER_CONFIG.push(item);
-        });
+        if (profileTypeConfigurations !== undefined) Profiles.getInstance().addToConfigArray(profileTypeConfigurations);
+
         // sequentially reload the internal profiles cache to satisfy all the newly added profile types
         await ZoweExplorerExtender.refreshProfilesQueue.add(async (): Promise<void> => {
             await Profiles.getInstance().refresh(ZoweExplorerApiRegister.getInstance());
@@ -173,12 +232,11 @@ export class ZoweExplorerExtender implements ZoweExplorerApi.IApiExplorerExtende
     public async reloadProfiles(profileType?: string): Promise<void> {
         // sequentially reload the internal profiles cache to satisfy all the newly added profile types
         await ZoweExplorerExtender.refreshProfilesQueue.add(async (): Promise<void> => {
-            // eslint-disable-next-line no-return-await
             await Profiles.getInstance().refresh(ZoweExplorerApiRegister.getInstance());
         });
         // profileType is used to load a default extender profile if no other profiles are populating the trees
-        this.datasetProvider?.addSession(undefined, profileType);
-        this.ussFileProvider?.addSession(undefined, profileType);
-        this.jobsProvider?.addSession(undefined, profileType);
+        await this.datasetProvider?.addSession(undefined, profileType);
+        await this.ussFileProvider?.addSession(undefined, profileType);
+        await this.jobsProvider?.addSession(undefined, profileType);
     }
 }

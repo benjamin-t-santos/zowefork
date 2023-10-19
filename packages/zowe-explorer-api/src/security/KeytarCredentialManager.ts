@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -23,6 +23,14 @@ import * as globals from "../globals";
 declare const __webpack_require__: typeof require;
 declare const __non_webpack_require__: typeof require;
 
+export type KeytarModule = {
+    deletePassword: (service: string, account: string) => Promise<boolean>;
+    findPassword: (service: string, account: string) => Promise<string | null>;
+    findCredentials: (name: string) => Promise<{ account: string; password: string }[]>;
+    getPassword: (service: string, account: string) => Promise<string | null>;
+    setPassword: (service: string, account: string, password: string) => Promise<void>;
+};
+
 /**
  * Keytar - Securely store user credentials in the system keychain
  *
@@ -35,8 +43,7 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
      *
      * @public
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    public static keytar: any;
+    public static keytar: KeytarModule;
 
     /**
      * Combined list of services that credentials may be stored under
@@ -60,8 +67,7 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
      * @param {string} service The service string to send to the superclass constructor.
      * @param {string} displayName The display name for this credential manager to send to the superclass constructor
      */
-    // eslint-disable-next-line @typescript-eslint/explicit-member-accessibility
-    constructor(service: string, displayName: string) {
+    public constructor(service: string, displayName: string) {
         // Always ensure that a manager instantiates the super class, even if the
         // constructor doesn't do anything. Who knows what things might happen in
         // the abstract class initialization in the future.
@@ -74,41 +80,23 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
         this.preferredService = service;
     }
 
-    public static getSecurityModules(moduleName: string, isTheia: boolean): NodeRequire | undefined {
+    public static getSecurityModules(moduleName: string, isTheia: boolean): NodeModule | undefined {
         let imperativeIsSecure = false;
-        const r = typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
         try {
             const fileName = path.join(getZoweDir(), "settings", "imperative.json");
-            let settings;
+            let settings: Record<string, unknown> = {};
             if (fs.existsSync(fileName)) {
                 settings = JSON.parse(fs.readFileSync(fileName, "utf8")) as Record<string, unknown>;
             }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            const baseValue = settings.overrides as Record<string, unknown>;
-            const value1 = baseValue.CredentialManager;
-            const value2 = baseValue["credential-manager"];
-            imperativeIsSecure =
-                (typeof value1 === "string" && value1.length > 0) || (typeof value2 === "string" && value2.length > 0);
+            const baseValue = settings["overrides"] as Record<string, unknown>;
+            const value1 = baseValue?.CredentialManager;
+            const value2 = baseValue?.["credential-manager"];
+            imperativeIsSecure = (typeof value1 === "string" && value1.length > 0) || (typeof value2 === "string" && value2.length > 0);
         } catch (error) {
+            imperative.Logger.getAppLogger().warn(error as string);
             return undefined;
         }
-        if (imperativeIsSecure) {
-            // Workaround for Theia issue (https://github.com/eclipse-theia/theia/issues/4935)
-            const appRoot = isTheia ? process.cwd() : vscode.env.appRoot;
-            try {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                return r(`${appRoot}/node_modules/${moduleName}`);
-            } catch (err) {
-                /* Do nothing */
-            }
-            try {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                return r(`${appRoot}/node_modules.asar/${moduleName}`);
-            } catch (err) {
-                /* Do nothing */
-            }
-        }
-        return undefined;
+        return imperativeIsSecure ? getSecurityModules(moduleName, isTheia) : undefined;
     }
 
     /**
@@ -124,7 +112,7 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
      */
     protected async deleteCredentials(account: string): Promise<void> {
         if (!(await this.deleteCredentialsHelper(account))) {
-            imperative.Logger.getAppLogger().debug("errorHandling.deleteCredentials", "Unable to delete credentials.");
+            imperative.Logger.getAppLogger().debug("Unable to delete credentials.");
         }
     }
 
@@ -141,27 +129,20 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
      */
     protected async loadCredentials(account: string, optional?: boolean): Promise<imperative.SecureCredential> {
         // Helper function to handle all breaking changes
-        // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-        const loadHelper = async (service: string) => {
+        const loadHelper = async (service: string): Promise<string> => {
             let secureValue: string = await KeytarCredentialManager.keytar.getPassword(service, account);
             // Handle user vs username case // Zowe v1 -> v2 (i.e. @brightside/core@2.x -> @zowe/cli@6+ )
             if (secureValue == null && account.endsWith("_username")) {
-                secureValue = await KeytarCredentialManager.keytar.getPassword(
-                    service,
-                    account.replace("_username", "_user")
-                );
+                secureValue = await KeytarCredentialManager.keytar.getPassword(service, account.replace("_username", "_user"));
             }
             // Handle pass vs password case // Zowe v0 -> v1 (i.e. @brightside/core@1.x -> @brightside/core@2.x)
             if (secureValue == null && account.endsWith("_pass")) {
-                secureValue = await KeytarCredentialManager.keytar.getPassword(
-                    service,
-                    account.replace("_pass", "_password")
-                );
+                secureValue = await KeytarCredentialManager.keytar.getPassword(service, account.replace("_pass", "_password"));
             }
             return secureValue;
         };
 
-        let password;
+        let password: string = null;
 
         // Check for stored credentials under each of the known services
         // We will stop checking once we find them somewhere
@@ -181,7 +162,6 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
             });
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return password;
     }
 
@@ -214,8 +194,7 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
         return wasDeleted;
     }
 
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    private getMissingEntryMessage(account: string) {
+    private getMissingEntryMessage(account: string): string {
         return (
             `Could not find an entry in the credential vault for the following:\n` +
             `  Service = ${this.allServices.join(", ")}\n` +
@@ -229,7 +208,7 @@ export class KeytarCredentialManager extends imperative.AbstractCredentialManage
 }
 
 /**
- * Imports the neccesary security modules
+ * Imports the necessary security modules
  */
 export function getSecurityModules(moduleName: string, isTheia: boolean): NodeModule | undefined {
     const r = typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
@@ -239,13 +218,13 @@ export function getSecurityModules(moduleName: string, isTheia: boolean): NodeMo
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return r(`${appRoot}/node_modules/${moduleName}`);
     } catch (err) {
-        /* Do nothing */
+        imperative.Logger.getAppLogger().warn(err as string);
     }
     try {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return r(`${appRoot}/node_modules.asar/${moduleName}`);
     } catch (err) {
-        /* Do nothing */
+        imperative.Logger.getAppLogger().warn(err as string);
     }
     return undefined;
 }

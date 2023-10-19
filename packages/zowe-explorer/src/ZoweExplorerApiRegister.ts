@@ -1,19 +1,21 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { imperative } from "@zowe/cli";
-import { ZoweExplorerApi, ZosmfUssApi, ZosmfMvsApi, ZosmfJesApi, ZosmfCommandApi } from "@zowe/zowe-explorer-api";
+import { ZoweExplorerApi, ZosmfUssApi, ZosmfMvsApi, ZosmfJesApi, ZosmfCommandApi, EventTypes } from "@zowe/zowe-explorer-api";
 import { ZoweExplorerExtender } from "./ZoweExplorerExtender";
-
+import { ZoweLogger } from "./utils/LoggerUtils";
 import * as nls from "vscode-nls";
+import * as vscode from "vscode";
+
 // Set up localization
 nls.config({
     messageFormat: nls.MessageFormat.bundle,
@@ -102,6 +104,9 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
     private jesApiImplementations = new Map<string, ZoweExplorerApi.IJes>();
     private commandApiImplementations = new Map<string, ZoweExplorerApi.ICommand>();
 
+    // Event emitter extenders can subscribe to
+    public onProfilesUpdateEmitter = new vscode.EventEmitter<EventTypes>();
+
     /**
      * Private constructor that creates the singleton instance of ZoweExplorerApiRegister.
      * It automatically registers the zosmf implementation as it is the default for Zowe Explorer.
@@ -126,10 +131,7 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
             this.ussApiImplementations.set(ussApi.getProfileTypeName(), ussApi);
         } else {
             throw new Error(
-                localize(
-                    "registerUssApi.error",
-                    "Internal error: A Zowe Explorer extension client tried to register an invalid USS API."
-                )
+                localize("registerUssApi.error", "Internal error: A Zowe Explorer extension client tried to register an invalid USS API.")
             );
         }
     }
@@ -143,10 +145,7 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
             this.mvsApiImplementations.set(mvsApi.getProfileTypeName(), mvsApi);
         } else {
             throw new Error(
-                localize(
-                    "registerMvsApi.error",
-                    "Internal error: A Zowe Explorer extension client tried to register an invalid MVS API."
-                )
+                localize("registerMvsApi.error", "Internal error: A Zowe Explorer extension client tried to register an invalid MVS API.")
             );
         }
     }
@@ -160,10 +159,7 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
             this.jesApiImplementations.set(jesApi.getProfileTypeName(), jesApi);
         } else {
             throw new Error(
-                localize(
-                    "registerJesApi.error",
-                    "Internal error: A Zowe Explorer extension client tried to register an invalid JES API."
-                )
+                localize("registerJesApi.error", "Internal error: A Zowe Explorer extension client tried to register an invalid JES API.")
             );
         }
     }
@@ -177,10 +173,7 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
             this.commandApiImplementations.set(commandApi.getProfileTypeName(), commandApi);
         } else {
             throw new Error(
-                localize(
-                    "registerCommandApi.error",
-                    "Internal error: A Zowe Explorer extension client tried to register an invalid Command API."
-                )
+                localize("registerCommandApi.error", "Internal error: A Zowe Explorer extension client tried to register an invalid Command API.")
             );
         }
     }
@@ -245,14 +238,11 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
     public getUssApi(profile: imperative.IProfileLoaded): ZoweExplorerApi.IUss {
         if (profile && profile.type && this.registeredUssApiTypes().includes(profile.type)) {
             // create a clone of the API object that remembers the profile with which it was created
-            const api = Object.create(this.ussApiImplementations.get(profile.type));
+            const api = Object.create(this.ussApiImplementations.get(profile.type)) as ZoweExplorerApi.IUss;
             api.profile = profile;
             return api;
         } else {
-            throw new Error(
-                localize("getUssApi.error", "Internal error: Tried to call a non-existing USS API in API register: ") +
-                    profile.type
-            );
+            throw new Error(localize("getUssApi.error", "Internal error: Tried to call a non-existing USS API in API register: ") + profile.type);
         }
     }
 
@@ -264,14 +254,11 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
     public getMvsApi(profile: imperative.IProfileLoaded): ZoweExplorerApi.IMvs {
         if (profile && profile.type && this.registeredMvsApiTypes().includes(profile.type)) {
             // create a clone of the API object that remembers the profile with which it was created
-            const api = Object.create(this.mvsApiImplementations.get(profile.type));
+            const api = Object.create(this.mvsApiImplementations.get(profile.type)) as ZoweExplorerApi.IMvs;
             api.profile = profile;
             return api;
         } else {
-            throw new Error(
-                localize("getMvsApi.error", "Internal error: Tried to call a non-existing MVS API in API register: ") +
-                    profile.type
-            );
+            throw new Error(localize("getMvsApi.error", "Internal error: Tried to call a non-existing MVS API in API register: ") + profile.type);
         }
     }
 
@@ -283,14 +270,11 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
     public getJesApi(profile: imperative.IProfileLoaded): ZoweExplorerApi.IJes {
         if (profile && profile.type && this.registeredJesApiTypes().includes(profile.type)) {
             // create a clone of the API object that remembers the profile with which it was created
-            const api = Object.create(this.jesApiImplementations.get(profile.type));
+            const api = Object.create(this.jesApiImplementations.get(profile.type)) as ZoweExplorerApi.IJes;
             api.profile = profile;
             return api;
         } else {
-            throw new Error(
-                localize("getJesApi.error", "Internal error: Tried to call a non-existing JES API in API register: ") +
-                    profile.type
-            );
+            throw new Error(localize("getJesApi.error", "Internal error: Tried to call a non-existing JES API in API register: ") + profile.type);
         }
     }
 
@@ -302,15 +286,12 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
     public getCommandApi(profile: imperative.IProfileLoaded): ZoweExplorerApi.ICommand {
         if (profile && profile.type && this.registeredCommandApiTypes().includes(profile.type)) {
             // create a clone of the API object that remembers the profile with which it was created
-            const api = Object.create(this.commandApiImplementations.get(profile.type));
+            const api = Object.create(this.commandApiImplementations.get(profile.type)) as ZoweExplorerApi.ICommand;
             api.profile = profile;
             return api;
         } else {
             throw new Error(
-                localize(
-                    "getCommandApi.error",
-                    "Internal error: Tried to call a non-existing Command API in API register: "
-                ) + profile.type
+                localize("getCommandApi.error", "Internal error: Tried to call a non-existing Command API in API register: ") + profile.type
             );
         }
     }
@@ -319,21 +300,22 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
         let result: ZoweExplorerApi.ICommon;
         try {
             result = this.getUssApi(profile);
-        } catch (error) {
+        } catch (ussError) {
+            ZoweLogger.debug(ussError);
             try {
                 result = this.getMvsApi(profile);
-            } catch (error) {
+            } catch (mvsError) {
+                ZoweLogger.debug(mvsError);
                 try {
                     result = this.getJesApi(profile);
-                } catch (error) {
+                } catch (JesError) {
+                    ZoweLogger.debug(JesError);
                     try {
                         result = this.getCommandApi(profile);
-                    } catch (error) {
+                    } catch (cmdError) {
+                        ZoweLogger.error(cmdError);
                         throw new Error(
-                            localize(
-                                "getCommonApi.error",
-                                "Internal error: Tried to call a non-existing Common API in API register: "
-                            ) + profile.type
+                            localize("getCommonApi.error", "Internal error: Tried to call a non-existing Common API in API register: ") + profile.type
                         );
                     }
                 }
@@ -348,5 +330,13 @@ export class ZoweExplorerApiRegister implements ZoweExplorerApi.IApiRegisterClie
      */
     public getExplorerExtenderApi(): ZoweExplorerApi.IApiExplorerExtender {
         return ZoweExplorerExtender.getInstance();
+    }
+
+    /**
+     * Event for extenders to subscribe to that will fire upon profile change.
+     * @returns event that can be attached that will be called upon profile change
+     */
+    public get onProfilesUpdate(): vscode.Event<EventTypes> {
+        return this.onProfilesUpdateEmitter.event;
     }
 }

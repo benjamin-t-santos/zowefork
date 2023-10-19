@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { Job } from "../../src/job/ZoweJobNode";
@@ -64,12 +64,7 @@ export function createIJobFile(): IJobFile {
     };
 }
 
-export function createJobsTree(
-    session: imperative.Session,
-    iJob: IJob,
-    profile: imperative.IProfileLoaded,
-    treeView: any
-): any {
+export function createJobsTree(session: imperative.Session, iJob: IJob, profile: imperative.IProfileLoaded, treeView: any): any {
     const jobNode = new Job("jobtest", vscode.TreeItemCollapsibleState.Expanded, null, session, iJob, profile);
     jobNode.contextValue = globals.JOBS_SESSION_CONTEXT;
 
@@ -110,12 +105,8 @@ export function createJobsTree(
     testJobsTree.addFavorite.mockImplementation((newFavorite) => {
         testJobsTree.mFavorites.push(newFavorite);
     });
-    testJobsTree.deleteSession.mockImplementation((badSession) =>
-        removeNodeFromArray(badSession, testJobsTree.mSessionNodes)
-    );
-    testJobsTree.removeFavorite.mockImplementation((badFavorite) =>
-        removeNodeFromArray(badFavorite, testJobsTree.mFavorites)
-    );
+    testJobsTree.deleteSession.mockImplementation((badSession) => removeNodeFromArray(badSession, testJobsTree.mSessionNodes));
+    testJobsTree.removeFavorite.mockImplementation((badFavorite) => removeNodeFromArray(badFavorite, testJobsTree.mFavorites));
     testJobsTree.removeFavProfile.mockImplementation((badFavProfileName) => {
         const badFavProfileNode = testJobsTree.mFavorites.find((treeNode) => treeNode.label === badFavProfileName);
         removeNodeFromArray(badFavProfileNode, testJobsTree.mFavorites);
@@ -129,6 +120,13 @@ export function createJobSessionNode(session: imperative.Session, profile: imper
     jobSessionNode.contextValue = globals.JOBS_SESSION_CONTEXT;
 
     return jobSessionNode;
+}
+
+export function createJobNode(session: any, profile: imperative.IProfileLoaded) {
+    const jobNode = new Job("sampleJob", vscode.TreeItemCollapsibleState.Collapsed, session.getSessionNode(), session, createIJobObject(), profile);
+    jobNode.contextValue = globals.JOBS_JOB_CONTEXT;
+
+    return jobNode;
 }
 
 export function createJobFavoritesNode() {

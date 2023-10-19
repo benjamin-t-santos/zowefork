@@ -1,19 +1,19 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
 import * as zowe from "@zowe/cli";
 import * as path from "path";
-import * as fs from "fs";
 import {
+    Gui,
     IZoweTree,
     IZoweNodeType,
     IZoweUSSTreeNode,
@@ -30,18 +30,13 @@ import {
     getFullPath,
     getZoweDir,
 } from "@zowe/zowe-explorer-api";
-import {
-    errorHandling,
-    FilterDescriptor,
-    FilterItem,
-    resolveQuickPickHelper,
-    readConfigFromDisk,
-    openConfigOnError,
-} from "./utils/ProfilesUtils";
+import { errorHandling, FilterDescriptor, FilterItem, ProfilesUtils } from "./utils/ProfilesUtils";
 import { ZoweExplorerApiRegister } from "./ZoweExplorerApiRegister";
+import { ZoweExplorerExtender } from "./ZoweExplorerExtender";
 import * as globals from "./globals";
 import * as nls from "vscode-nls";
-import { UIViews } from "./shared/ui-views";
+import { SettingsConfig } from "./utils/SettingsConfig";
+import { ZoweLogger } from "./utils/LoggerUtils";
 
 // Set up localization
 nls.config({
@@ -54,12 +49,13 @@ let InputBoxOptions: vscode.InputBoxOptions;
 export class Profiles extends ProfilesCache {
     // Processing stops if there are no profiles detected
     public static async createInstance(log: zowe.imperative.Logger): Promise<Profiles> {
-        Profiles.loader = new Profiles(log, vscode.workspace.workspaceFolders?.[0].uri.fsPath);
+        Profiles.loader = new Profiles(log, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
         await Profiles.loader.refresh(ZoweExplorerApiRegister.getInstance());
         return Profiles.loader;
     }
 
     public static getInstance(): Profiles {
+        ZoweLogger.trace("Profiles.getInstance called.");
         return Profiles.loader;
     }
 
@@ -71,6 +67,11 @@ export class Profiles extends ProfilesCache {
     private ussSchema: string = globals.SETTINGS_USS_HISTORY;
     private jobsSchema: string = globals.SETTINGS_JOBS_HISTORY;
     private mProfileInfo: zowe.imperative.ProfileInfo;
+    private profilesOpCancelled = localize("profiles.operation.cancelled", "Operation Cancelled");
+    private manualEditMsg = localize(
+        "profiles.manualEditMsg",
+        "The Team configuration file has been opened in the editor. Editing or removal of profiles will need to be done manually."
+    );
     public constructor(log: zowe.imperative.Logger, cwd?: string) {
         super(log, cwd);
     }
@@ -83,29 +84,40 @@ export class Profiles extends ProfilesCache {
      * contents will be loaded.
      */
     public async getProfileInfo(): Promise<zowe.imperative.ProfileInfo> {
+        ZoweLogger.trace("Profiles.getProfileInfo called.");
         this.mProfileInfo = await super.getProfileInfo();
         return this.mProfileInfo;
     }
 
-    public async checkCurrentProfile(theProfile: zowe.imperative.IProfileLoaded) {
+    public async checkCurrentProfile(theProfile: zowe.imperative.IProfileLoaded): Promise<IProfileValidation> {
+        ZoweLogger.trace("Profiles.checkCurrentProfile called.");
         let profileStatus: IProfileValidation;
-        if (!theProfile.profile.tokenType && (!theProfile.profile.user || !theProfile.profile.password)) {
-            // The profile will need to be reactivated, so remove it from profilesForValidation
-            this.profilesForValidation.filter((profile, index) => {
-                if (profile.name === theProfile.name && profile.status !== "unverified") {
-                    this.profilesForValidation.splice(index, 1);
-                }
+        const usingTokenAuth = await ProfilesUtils.isUsingTokenAuth(theProfile.name);
+
+        if (usingTokenAuth && !theProfile.profile.tokenType) {
+            const error = new zowe.imperative.ImperativeError({
+                msg: localize("checkCurrentProfile.tokenAuthError.msg", "Token auth error"),
+                additionalDetails: localize(
+                    "checkCurrentProfile.tokenAuthError.additionalDetails",
+                    "Profile was found using token auth, please log in to continue."
+                ),
+                errorCode: `${zowe.imperative.RestConstants.HTTP_STATUS_401}`,
             });
+            await errorHandling(error, theProfile.name, error.message);
+            profileStatus = { name: theProfile.name, status: "unverified" };
+            return profileStatus;
+        }
+
+        if (!usingTokenAuth && (!theProfile.profile.user || !theProfile.profile.password)) {
+            // The profile will need to be reactivated, so remove it from profilesForValidation
+            this.profilesForValidation = this.profilesForValidation.filter(
+                (profile) => profile.status === "unverified" && profile.name !== theProfile.name
+            );
             let values: string[];
             try {
-                values = await Profiles.getInstance().promptCredentials(theProfile.name);
+                values = await Profiles.getInstance().promptCredentials(theProfile);
             } catch (error) {
-                errorHandling(
-                    error,
-                    theProfile.name,
-                    localize("checkCurrentProfile.error", "Error encountered in ") +
-                        `checkCurrentProfile.optionalProfiles!`
-                );
+                await errorHandling(error, theProfile.name, error.message);
                 return profileStatus;
             }
             if (values) {
@@ -137,16 +149,17 @@ export class Profiles extends ProfilesCache {
     }
 
     public async getProfileSetting(theProfile: zowe.imperative.IProfileLoaded): Promise<IProfileValidation> {
+        ZoweLogger.trace("Profiles.getProfileSetting called.");
         let profileStatus: IProfileValidation;
         let found: boolean = false;
-        this.profilesValidationSetting.filter(async (instance) => {
+        this.profilesValidationSetting.forEach((instance) => {
             if (instance.name === theProfile.name && instance.setting === false) {
                 profileStatus = {
                     status: "unverified",
                     name: instance.name,
                 };
                 if (this.profilesForValidation.length > 0) {
-                    this.profilesForValidation.filter((profile) => {
+                    this.profilesForValidation.forEach((profile) => {
                         if (profile.name === theProfile.name && profile.status === "unverified") {
                             found = true;
                         }
@@ -168,56 +181,55 @@ export class Profiles extends ProfilesCache {
         return profileStatus;
     }
 
-    public async disableValidation(node: IZoweNodeType): Promise<IZoweNodeType> {
+    public disableValidation(node: IZoweNodeType): IZoweNodeType {
+        ZoweLogger.trace("Profiles.disableValidation called.");
         this.disableValidationContext(node);
         return node;
     }
 
-    public async disableValidationContext(node: IZoweNodeType) {
+    public disableValidationContext(node: IZoweNodeType): IZoweNodeType {
+        ZoweLogger.trace("Profiles.disableValidationContext called.");
         const theProfile: zowe.imperative.IProfileLoaded = node.getProfile();
         this.validationArraySetup(theProfile, false);
-        if (node.contextValue.includes(`${globals.VALIDATE_SUFFIX}true`)) {
-            node.contextValue = node.contextValue
-                .replace(/(_validate=true)/g, "")
-                .replace(/(_Active)/g, "")
-                .replace(/(_Inactive)/g, "");
-            node.contextValue = node.contextValue + `${globals.VALIDATE_SUFFIX}false`;
-        } else if (node.contextValue.includes(`${globals.VALIDATE_SUFFIX}false`)) {
+        if (node.contextValue.includes(globals.VALIDATE_SUFFIX)) {
+            node.contextValue = node.contextValue.replace(globals.VALIDATE_SUFFIX, "");
+            node.contextValue += globals.NO_VALIDATE_SUFFIX;
+        } else if (node.contextValue.includes(globals.NO_VALIDATE_SUFFIX)) {
             return node;
         } else {
-            node.contextValue = node.contextValue + `${globals.VALIDATE_SUFFIX}false`;
+            node.contextValue += globals.VALIDATE_SUFFIX;
         }
         return node;
     }
 
-    public async enableValidation(node: IZoweNodeType): Promise<IZoweNodeType> {
+    public enableValidation(node: IZoweNodeType): IZoweNodeType {
+        ZoweLogger.trace("Profiles.enableValidation called.");
         this.enableValidationContext(node);
         return node;
     }
 
-    public async enableValidationContext(node: IZoweNodeType) {
+    public enableValidationContext(node: IZoweNodeType): IZoweNodeType {
+        ZoweLogger.trace("Profiles.enableValidationContext called.");
         const theProfile: zowe.imperative.IProfileLoaded = node.getProfile();
         this.validationArraySetup(theProfile, true);
-        if (node.contextValue.includes(`${globals.VALIDATE_SUFFIX}false`)) {
-            node.contextValue = node.contextValue.replace(/(_validate=false)/g, "").replace(/(_Unverified)/g, "");
-            node.contextValue = node.contextValue + `${globals.VALIDATE_SUFFIX}true`;
-        } else if (node.contextValue.includes(`${globals.VALIDATE_SUFFIX}true`)) {
+        if (node.contextValue.includes(globals.NO_VALIDATE_SUFFIX)) {
+            node.contextValue = node.contextValue.replace(globals.NO_VALIDATE_SUFFIX, "");
+            node.contextValue += globals.VALIDATE_SUFFIX;
+        } else if (node.contextValue.includes(globals.VALIDATE_SUFFIX)) {
             return node;
         } else {
-            node.contextValue = node.contextValue + `${globals.VALIDATE_SUFFIX}true`;
+            node.contextValue += globals.VALIDATE_SUFFIX;
         }
 
         return node;
     }
 
-    public async validationArraySetup(
-        theProfile: zowe.imperative.IProfileLoaded,
-        validationSetting: boolean
-    ): Promise<IValidationSetting> {
+    public validationArraySetup(theProfile: zowe.imperative.IProfileLoaded, validationSetting: boolean): IValidationSetting {
+        ZoweLogger.trace("Profiles.validationArraySetup called.");
         let found: boolean = false;
         let profileSetting: IValidationSetting;
         if (this.profilesValidationSetting.length > 0) {
-            this.profilesValidationSetting.filter((instance) => {
+            this.profilesValidationSetting.forEach((instance) => {
                 if (instance.name === theProfile.name && instance.setting === validationSetting) {
                     found = true;
                     profileSetting = {
@@ -261,54 +273,52 @@ export class Profiles extends ProfilesCache {
      * @export
      * @param {USSTree} zoweFileProvider - either the USS, MVS, JES tree
      */
-    public async createZoweSession(zoweFileProvider: IZoweTree<IZoweTreeNode>) {
-        let profileNamesList;
+    public async createZoweSession(zoweFileProvider: IZoweTree<IZoweTreeNode>): Promise<void> {
+        ZoweLogger.trace("Profiles.createZoweSession called.");
+        let profileNamesList: string[] = [];
+        const treeType = zoweFileProvider.getTreeType();
         try {
             const allProfiles = Profiles.getInstance().allProfiles;
             if (allProfiles) {
-                // Get all profiles
-                profileNamesList = allProfiles.map((profile) => {
-                    return profile.name;
-                });
-                // Filter to list of the APIs available for current tree explorer
-                profileNamesList = profileNamesList?.filter((profileName) => {
-                    const profile = Profiles.getInstance().loadNamedProfile(profileName);
-                    if (profile) {
-                        if (zoweFileProvider.getTreeType() === PersistenceSchemaEnum.USS) {
-                            const ussProfileTypes = ZoweExplorerApiRegister.getInstance().registeredUssApiTypes();
-                            return ussProfileTypes.includes(profile.type);
-                        }
-                        if (zoweFileProvider.getTreeType() === PersistenceSchemaEnum.Dataset) {
-                            const mvsProfileTypes = ZoweExplorerApiRegister.getInstance().registeredMvsApiTypes();
-                            return mvsProfileTypes.includes(profile.type);
-                        }
-                        if (zoweFileProvider.getTreeType() === PersistenceSchemaEnum.Job) {
-                            const jesProfileTypes = ZoweExplorerApiRegister.getInstance().registeredJesApiTypes();
-                            return jesProfileTypes.includes(profile.type);
-                        }
-                    }
-                });
-                profileNamesList = profileNamesList?.filter(
-                    (profileName) =>
-                        // Find all cases where a profile is not already displayed
-                        !zoweFileProvider.mSessionNodes?.find(
+                // Get all profiles and filter to list of the APIs available for current tree explorer
+                profileNamesList = allProfiles
+                    .map((profile) => profile.name)
+                    .filter((profileName) => {
+                        const profile = Profiles.getInstance().loadNamedProfile(profileName);
+                        const notInSessionNodes = !zoweFileProvider.mSessionNodes?.find(
                             (sessionNode) => sessionNode.getProfileName() === profileName
-                        )
-                );
+                        );
+                        if (profile) {
+                            if (zoweFileProvider.getTreeType() === PersistenceSchemaEnum.USS) {
+                                const ussProfileTypes = ZoweExplorerApiRegister.getInstance().registeredUssApiTypes();
+                                return ussProfileTypes.includes(profile.type) && notInSessionNodes;
+                            }
+                            if (zoweFileProvider.getTreeType() === PersistenceSchemaEnum.Dataset) {
+                                const mvsProfileTypes = ZoweExplorerApiRegister.getInstance().registeredMvsApiTypes();
+                                return mvsProfileTypes.includes(profile.type) && notInSessionNodes;
+                            }
+                            if (zoweFileProvider.getTreeType() === PersistenceSchemaEnum.Job) {
+                                const jesProfileTypes = ZoweExplorerApiRegister.getInstance().registeredJesApiTypes();
+                                return jesProfileTypes.includes(profile.type) && notInSessionNodes;
+                            }
+                        }
+
+                        return false;
+                    });
             }
         } catch (err) {
-            this.log.warn(err);
+            ZoweLogger.warn(err);
         }
         // Set Options according to profile management in use
 
-        const createNewProfile = "Create a New Connection to z/OS";
-        const createNewConfig = "Create a New Team Configuration File";
-        const editConfig = "Edit Team Configuration File";
+        const createNewProfile = localize("profiles.createNewConnection", "$(plus) Create a new connection to z/OS");
+        const createNewConfig = localize("profiles.createTeamConfig", "$(plus) Create a new Team Configuration file");
+        const editConfig = localize("profiles.editConfig", "$(pencil) Edit Team Configuration file");
 
-        const createPick = new FilterDescriptor("\uFF0B " + createNewProfile);
-        const configPick = new FilterDescriptor("\uFF0B " + createNewConfig);
-        const configEdit = new FilterDescriptor("\u270F " + editConfig);
-        const items: vscode.QuickPickItem[] = [];
+        const createPick = new FilterDescriptor(createNewProfile);
+        const configPick = new FilterDescriptor(createNewConfig);
+        const configEdit = new FilterDescriptor(editConfig);
+        const items: vscode.QuickPickItem[] = [globals.SEPARATORS.BLANK];
         let mProfileInfo: zowe.imperative.ProfileInfo;
         try {
             mProfileInfo = await this.getProfileInfo();
@@ -318,28 +328,28 @@ export class Profiles extends ProfilesCache {
                 items.push(new FilterItem({ text: pName, icon: this.getProfileIcon(osLocInfo)[0] }));
             }
         } catch (err) {
-            this.log.warn(err);
+            ZoweLogger.warn(err);
         }
 
-        const quickpick = vscode.window.createQuickPick();
+        const quickpick = Gui.createQuickPick();
         let addProfilePlaceholder = "";
         switch (zoweFileProvider.getTreeType()) {
             case PersistenceSchemaEnum.Dataset:
                 addProfilePlaceholder = localize(
-                    "ds.addSession.quickPickOption",
+                    "createZoweSession.ds.quickPickOption",
                     'Choose "Create new..." to define or select a profile to add to the DATA SETS Explorer'
                 );
                 break;
             case PersistenceSchemaEnum.Job:
                 addProfilePlaceholder = localize(
-                    "jobs.addSession.quickPickOption",
+                    "createZoweSession.job.quickPickOption",
                     'Choose "Create new..." to define or select a profile to add to the JOBS Explorer'
                 );
                 break;
             default:
                 // Use USS View as default for placeholder text
                 addProfilePlaceholder = localize(
-                    "uss.addSession.quickPickOption",
+                    "createZoweSession.uss.quickPickOption",
                     'Choose "Create new..." to define or select a profile to add to the USS Explorer'
                 );
         }
@@ -351,12 +361,12 @@ export class Profiles extends ProfilesCache {
         quickpick.placeholder = addProfilePlaceholder;
         quickpick.ignoreFocusOut = true;
         quickpick.show();
-        const choice = await resolveQuickPickHelper(quickpick);
+        const choice = await Gui.resolveQuickPick(quickpick);
         quickpick.hide();
+        const debugMsg = localize("createZoweSession.cancelled", "Profile selection has been cancelled.");
         if (!choice) {
-            vscode.window.showInformationMessage(
-                localize("enterPattern.pattern", "No selection made. Operation cancelled.")
-            );
+            ZoweLogger.debug(debugMsg);
+            Gui.showMessage(debugMsg);
             return;
         }
         if (choice === configPick) {
@@ -379,14 +389,8 @@ export class Profiles extends ProfilesCache {
             try {
                 config = await this.getProfileInfo();
             } catch (error) {
-                await openConfigOnError(error);
-                vscode.window.showErrorMessage(
-                    localize(
-                        "Profiles.getProfileInfo.error",
-                        "Error in creating team configuration file: {0}",
-                        error.message
-                    )
-                );
+                ZoweLogger.error(error);
+                ZoweExplorerExtender.showZoweConfigError(error.message);
             }
             if (config.usingTeamConfig) {
                 const profiles = config.getAllProfiles();
@@ -402,67 +406,52 @@ export class Profiles extends ProfilesCache {
                 }
 
                 const options = {
-                    placeHolder: localize(
-                        "createNewConnection.option.prompt.profileName.placeholder",
-                        "Connection Name"
-                    ),
-                    prompt: localize(
-                        "createNewConnection.option.prompt.profileName",
-                        "Enter a name for the connection"
-                    ),
+                    placeHolder: localize("createZoweSession.connectionName.placeholder", "Connection Name"),
+                    prompt: localize("createZoweSession.connectionName.prompt", "Enter a name for the connection"),
                     value: profileName,
                 };
-                profileName = await UIViews.inputBox(options);
+                profileName = await Gui.showInputBox(options);
                 if (!profileName) {
-                    vscode.window.showInformationMessage(
-                        localize(
-                            "createNewConnection.enterprofileName",
-                            "Profile Name was not supplied. Operation Cancelled"
-                        )
-                    );
+                    ZoweLogger.debug(debugMsg);
+                    Gui.showMessage(debugMsg);
                     return;
                 }
                 chosenProfile = profileName.trim();
-                this.log.debug(localize("addSession.log.debug.createNewProfile", "User created a new profile"));
                 try {
                     newprofile = await Profiles.getInstance().createNewConnection(chosenProfile);
                 } catch (error) {
-                    await errorHandling(error, chosenProfile, error.message);
+                    await errorHandling(error, chosenProfile);
                 }
                 if (newprofile) {
                     try {
                         await Profiles.getInstance().refresh(ZoweExplorerApiRegister.getInstance());
                     } catch (error) {
-                        await errorHandling(error, newprofile, error.message);
+                        await errorHandling(error, newprofile);
                     }
+                    ZoweLogger.info(localize("createZoweSession.createNewProfile", "New profile created, {0}.", chosenProfile));
                     await zoweFileProvider.addSession(newprofile);
                     await zoweFileProvider.refresh();
                 }
             }
         } else if (chosenProfile) {
-            this.log.debug(
-                localize("createZoweSession.log.debug.selectProfile", "User selected profile ") + chosenProfile
-            );
+            ZoweLogger.info(localize("createZoweSession.addProfile", "The profile {0} has been added to the {1} tree.", chosenProfile, treeType));
             await zoweFileProvider.addSession(chosenProfile);
         } else {
-            this.log.debug(
-                localize("createZoweSession.log.debug.cancelledSelection", "User cancelled profile selection")
-            );
+            ZoweLogger.debug(debugMsg);
         }
     }
 
-    public async editSession(
-        profileLoaded: zowe.imperative.IProfileLoaded,
-        profileName: string
-    ): Promise<any | undefined> {
+    public async editSession(profileLoaded: zowe.imperative.IProfileLoaded, profileName: string): Promise<any | undefined> {
+        ZoweLogger.trace("Profiles.editSession called.");
         if ((await this.getProfileInfo()).usingTeamConfig) {
             const currentProfile = await this.getProfileFromConfig(profileLoaded.name);
             const filePath = currentProfile.profLoc.osLoc[0];
             await this.openConfigFile(filePath);
+            Gui.showMessage(this.manualEditMsg);
             return;
         }
         const editSession = this.loadNamedProfile(profileLoaded.name, profileLoaded.type).profile;
-        const editURL = editSession.host + ":" + editSession.port;
+        const editURL = `${editSession.host as string}:${editSession.port as string}`;
         const editUser = editSession.user;
         const editPass = editSession.password;
         const editrej = editSession.rejectUnauthorized;
@@ -475,7 +464,9 @@ export class Profiles extends ProfilesCache {
         const schema: {} = this.getSchema(profileLoaded.type);
         const schemaArray = Object.keys(schema);
 
-        const updSchemaValues: any = {};
+        const updSchemaValues: {
+            [k: string]: any;
+        } = {};
         updSchemaValues.name = profileName;
 
         // Go through array of schema for input values
@@ -484,9 +475,7 @@ export class Profiles extends ProfilesCache {
                 case "host":
                     updUrl = await this.urlInfo(editURL);
                     if (updUrl === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("editConnection.zosmfURL", "No valid value for z/OS URL. Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     }
                     updSchemaValues[value] = updUrl.host;
@@ -498,12 +487,7 @@ export class Profiles extends ProfilesCache {
                     if (updSchemaValues[value] === undefined) {
                         updPort = await this.portInfo(value, schema);
                         if (Number.isNaN(Number(updPort))) {
-                            vscode.window.showInformationMessage(
-                                localize(
-                                    "editConnection.undefined.port",
-                                    "Invalid Port number provided or operation was cancelled"
-                                )
-                            );
+                            Gui.showMessage(this.profilesOpCancelled);
                             return undefined;
                         }
                         updSchemaValues[value] = updPort;
@@ -513,9 +497,7 @@ export class Profiles extends ProfilesCache {
                 case "user":
                     updUser = await this.userInfo(editUser);
                     if (updUser === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("editConnection.undefined.username", "Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     }
                     updSchemaValues[value] = updUser;
@@ -523,9 +505,7 @@ export class Profiles extends ProfilesCache {
                 case "password":
                     updPass = await this.passwordInfo(editPass);
                     if (updPass === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("editConnection.undefined.username", "Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     }
                     updSchemaValues[value] = updPass;
@@ -533,9 +513,7 @@ export class Profiles extends ProfilesCache {
                 case "rejectUnauthorized":
                     updRU = await this.ruInfo(editrej);
                     if (updRU === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("editConnection.rejectUnauthorize", "Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     }
                     updSchemaValues[value] = updRU;
@@ -546,23 +524,19 @@ export class Profiles extends ProfilesCache {
                     break;
                 case "tokenValue":
                     break;
-                default:
-                    let options: vscode.InputBoxOptions;
-                    const response = await this.checkType(schema[value].type);
+                default: {
+                    const response = this.checkType(schema[value].type);
                     switch (response) {
-                        case "number":
-                            options = await this.optionsValue(value, schema, editSession[value]);
-                            const updValue = await UIViews.inputBox(options);
+                        case "number": {
+                            const updValue = await Gui.showInputBox(this.optionsValue(value, schema, editSession[value]));
                             if (!Number.isNaN(Number(updValue))) {
                                 updSchemaValues[value] = Number(updValue);
                             } else {
                                 switch (true) {
                                     case updValue === undefined:
-                                        vscode.window.showInformationMessage(
-                                            localize("editConnection.number", "Operation Cancelled")
-                                        );
+                                        Gui.showMessage(this.profilesOpCancelled);
                                         return undefined;
-                                    case schema[value].optionDefinition.hasOwnProperty("defaultValue"):
+                                    case "defaultValue" in schema[value].optionDefinition:
                                         updSchemaValues[value] = schema[value].optionDefinition.defaultValue;
                                         break;
                                     default:
@@ -571,24 +545,20 @@ export class Profiles extends ProfilesCache {
                                 }
                             }
                             break;
-                        case "boolean":
-                            let updIsTrue: boolean;
-                            updIsTrue = await this.boolInfo(value, schema);
+                        }
+                        case "boolean": {
+                            const updIsTrue = await this.boolInfo(value, schema);
                             if (updIsTrue === undefined) {
-                                vscode.window.showInformationMessage(
-                                    localize("editConnection.booleanValue", "Operation Cancelled")
-                                );
+                                Gui.showMessage(this.profilesOpCancelled);
                                 return undefined;
                             }
                             updSchemaValues[value] = updIsTrue;
                             break;
-                        default:
-                            options = await this.optionsValue(value, schema, editSession[value]);
-                            const updDefValue = await UIViews.inputBox(options);
+                        }
+                        default: {
+                            const updDefValue = await Gui.showInputBox(this.optionsValue(value, schema, editSession[value]));
                             if (updDefValue === undefined) {
-                                vscode.window.showInformationMessage(
-                                    localize("editConnection.default", "Operation Cancelled")
-                                );
+                                Gui.showMessage(this.profilesOpCancelled);
                                 return undefined;
                             }
                             if (updDefValue === "") {
@@ -596,29 +566,30 @@ export class Profiles extends ProfilesCache {
                             }
                             updSchemaValues[value] = updDefValue;
                             break;
+                        }
                     }
+                }
             }
         }
 
         try {
-            const updSession = await zowe.ZosmfSession.createSessCfgFromArgs(updSchemaValues);
+            const updSession = await zowe.ZosmfSession.createSessCfgFromArgs(updSchemaValues as zowe.imperative.ICommandArguments);
             updSchemaValues.base64EncodedAuth = updSession.base64EncodedAuth;
             await this.updateProfile({
                 profile: updSchemaValues,
                 name: profileName,
                 type: profileLoaded.type,
             });
-            vscode.window.showInformationMessage(
-                localize("editConnection.success", "Profile was successfully updated")
-            );
+            Gui.showMessage(localize("editSession.success", "Profile was successfully updated"));
 
             return updSchemaValues;
         } catch (error) {
-            await errorHandling(error.message);
+            await errorHandling(error, profileName);
         }
     }
 
     public async getProfileType(): Promise<string> {
+        ZoweLogger.trace("Profiles.getProfileType called.");
         let profileType: string;
         const profTypes = ZoweExplorerApiRegister.getInstance().registeredApiTypes();
         const typeOptions = Array.from(profTypes);
@@ -626,30 +597,29 @@ export class Profiles extends ProfilesCache {
             profileType = typeOptions[0];
         } else {
             const quickPickTypeOptions: vscode.QuickPickOptions = {
-                placeHolder: localize("createNewConnection.option.prompt.type.placeholder", "Profile Type"),
+                placeHolder: localize("getProfileType.qp.placeholder", "Profile Type"),
                 ignoreFocusOut: true,
                 canPickMany: false,
             };
-            profileType = await vscode.window.showQuickPick(typeOptions, quickPickTypeOptions);
+            profileType = await Gui.showQuickPick(typeOptions, quickPickTypeOptions);
         }
         return profileType;
     }
 
-    public async createZoweSchema(zoweFileProvider: IZoweTree<IZoweTreeNode>): Promise<string> {
+    public async createZoweSchema(_zoweFileProvider: IZoweTree<IZoweTreeNode>): Promise<string> {
+        ZoweLogger.trace("Profiles.createZoweSchema called.");
         try {
             let user = false;
             let global = true;
             let rootPath = getZoweDir();
-            if (vscode.workspace.workspaceFolders) {
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]) {
                 const choice = await this.getConfigLocationPrompt("create");
                 if (choice === undefined) {
-                    vscode.window.showInformationMessage(
-                        localize("createZoweSchema.undefined.location", "Operation Cancelled")
-                    );
+                    Gui.showMessage(this.profilesOpCancelled);
                     return;
                 }
                 if (choice === "project") {
-                    rootPath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+                    rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
                     user = true;
                     global = false;
                 }
@@ -672,16 +642,18 @@ export class Profiles extends ProfilesCache {
                 homeDir: getZoweDir(),
                 projectDir: getFullPath(rootPath),
             });
-            if (vscode.workspace.workspaceFolders) {
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]) {
                 config.api.layers.activate(user, global, rootPath);
             }
 
             const impConfig: zowe.imperative.IImperativeConfig = zowe.getImperativeConfig();
             const knownCliConfig: zowe.imperative.ICommandProfileTypeConfiguration[] = impConfig.profiles;
-            // add extenders config info from global variable
-            globals.EXTENDER_CONFIG.forEach((item) => {
+
+            const extenderinfo = this.getConfigArray();
+            extenderinfo.forEach((item) => {
                 knownCliConfig.push(item);
             });
+
             knownCliConfig.push(impConfig.baseProfile);
             config.setSchema(zowe.imperative.ConfigSchema.buildSchema(knownCliConfig));
 
@@ -700,6 +672,9 @@ export class Profiles extends ProfilesCache {
 
             config.api.layers.merge(newConfig);
             await config.save(false);
+            if (globals.ISTHEIA) {
+                vscode.commands.executeCommand("zowe.extRefresh");
+            }
             let configName;
             if (user) {
                 configName = config.userConfigName;
@@ -707,38 +682,19 @@ export class Profiles extends ProfilesCache {
                 configName = config.configName;
             }
             await this.openConfigFile(path.join(rootPath, configName));
-            await this.promptToRefreshForProfiles(rootPath);
             return path.join(rootPath, configName);
         } catch (err) {
-            await openConfigOnError(err);
-            vscode.window.showErrorMessage(
-                localize("Profiles.getProfileInfo.error", "Error in creating team configuration file: {0}", err.message)
-            );
+            ZoweLogger.error(err);
+            ZoweExplorerExtender.showZoweConfigError(err.message);
         }
     }
 
-    public updateImperativeSettings() {
-        try {
-            const fileName = path.join(getZoweDir(), "settings", "imperative.json");
-            const updatedSettings = {
-                overrides: {
-                    CredentialManager: false,
-                },
-            };
-            fs.writeFile(fileName, JSON.stringify(updatedSettings), "utf8", (err) => {
-                if (err) {
-                    this.log.error("Could not update imperative.json settings file", err);
-                }
-            });
-        } catch (error) {
-            this.log.error(error);
-        }
-    }
-
-    public async editZoweConfigFile() {
+    public async editZoweConfigFile(): Promise<void> {
+        ZoweLogger.trace("Profiles.editZoweConfigFile called.");
         const existingLayers = await this.getConfigLayers();
         if (existingLayers.length === 1) {
             await this.openConfigFile(existingLayers[0].path);
+            Gui.showMessage(this.manualEditMsg);
         }
         if (existingLayers && existingLayers.length > 1) {
             const choice = await this.getConfigLocationPrompt("edit");
@@ -749,6 +705,7 @@ export class Profiles extends ProfilesCache {
                             await this.openConfigFile(file.path);
                         }
                     }
+                    Gui.showMessage(this.manualEditMsg);
                     break;
                 case "global":
                     for (const file of existingLayers) {
@@ -756,18 +713,17 @@ export class Profiles extends ProfilesCache {
                             await this.openConfigFile(file.path);
                         }
                     }
+                    Gui.showMessage(this.manualEditMsg);
                     break;
                 default:
-                    vscode.window.showInformationMessage(
-                        localize("createZoweSchema.undefined.location", "Operation Cancelled")
-                    );
-                    return;
+                    Gui.showMessage(this.profilesOpCancelled);
+                    break;
             }
-            return;
         }
     }
 
     public async createNewConnection(profileName: string, requestedProfileType?: string): Promise<string | undefined> {
+        ZoweLogger.trace("Profiles.createNewConnection called.");
         let newUser: string;
         let newPass: string;
         let newRU: boolean;
@@ -777,17 +733,13 @@ export class Profiles extends ProfilesCache {
         const newProfileName = profileName.trim();
 
         if (newProfileName === undefined || newProfileName === "") {
-            vscode.window.showInformationMessage(
-                localize("createNewConnection.profileName", "Profile name was not supplied. Operation Cancelled")
-            );
+            Gui.showMessage(this.profilesOpCancelled);
             return undefined;
         }
 
         const profileType = requestedProfileType ? requestedProfileType : await this.getProfileType();
         if (profileType === undefined) {
-            vscode.window.showInformationMessage(
-                localize("createNewConnection.profileType", "No profile type was chosen. Operation Cancelled")
-            );
+            Gui.showMessage(this.profilesOpCancelled);
             return undefined;
         }
 
@@ -803,9 +755,7 @@ export class Profiles extends ProfilesCache {
                 case "host":
                     newUrl = await this.urlInfo();
                     if (newUrl === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("createNewConnection.zosmfURL", "No valid value for z/OS URL. Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     }
                     schemaValues[value] = newUrl.host;
@@ -817,12 +767,7 @@ export class Profiles extends ProfilesCache {
                     if (schemaValues[value] === undefined) {
                         newPort = await this.portInfo(value, schema);
                         if (Number.isNaN(Number(newPort))) {
-                            vscode.window.showInformationMessage(
-                                localize(
-                                    "createNewConnection.undefined.port",
-                                    "Invalid Port number provided or operation was cancelled"
-                                )
-                            );
+                            Gui.showMessage(this.profilesOpCancelled);
                             return undefined;
                         }
                         schemaValues[value] = newPort;
@@ -832,9 +777,7 @@ export class Profiles extends ProfilesCache {
                 case "user":
                     newUser = await this.userInfo();
                     if (newUser === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("createNewConnection.undefined.username", "Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     } else if (newUser === "") {
                         delete schemaValues[value];
@@ -845,9 +788,7 @@ export class Profiles extends ProfilesCache {
                 case "password":
                     newPass = await this.passwordInfo();
                     if (newPass === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("createNewConnection.undefined.username", "Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     } else if (newPass === "") {
                         delete schemaValues[value];
@@ -858,9 +799,7 @@ export class Profiles extends ProfilesCache {
                 case "rejectUnauthorized":
                     newRU = await this.ruInfo();
                     if (newRU === undefined) {
-                        vscode.window.showInformationMessage(
-                            localize("createNewConnection.rejectUnauthorize", "Operation Cancelled")
-                        );
+                        Gui.showMessage(this.profilesOpCancelled);
                         return undefined;
                     }
                     schemaValues[value] = newRU;
@@ -871,13 +810,13 @@ export class Profiles extends ProfilesCache {
                     break;
                 case "tokenValue":
                     break;
-                default:
+                default: {
                     let options: vscode.InputBoxOptions;
-                    const response = await this.checkType(schema[value].type);
+                    const response = this.checkType(schema[value].type);
                     switch (response) {
-                        case "number":
-                            options = await this.optionsValue(value, schema);
-                            const enteredValue = Number(await UIViews.inputBox(options));
+                        case "number": {
+                            options = this.optionsValue(value, schema);
+                            const enteredValue = Number(await Gui.showInputBox(options));
                             if (!Number.isNaN(Number(enteredValue))) {
                                 if ((value === "encoding" || value === "responseTimeout") && enteredValue === 0) {
                                     delete schemaValues[value];
@@ -885,31 +824,28 @@ export class Profiles extends ProfilesCache {
                                     schemaValues[value] = Number(enteredValue);
                                 }
                             } else {
-                                if (schema[value].optionDefinition.hasOwnProperty("defaultValue")) {
+                                if ("defaultValue" in schema[value].optionDefinition) {
                                     schemaValues[value] = schema[value].optionDefinition.defaultValue;
                                 } else {
                                     delete schemaValues[value];
                                 }
                             }
                             break;
-                        case "boolean":
-                            let isTrue: boolean;
-                            isTrue = await this.boolInfo(value, schema);
+                        }
+                        case "boolean": {
+                            const isTrue = await this.boolInfo(value, schema);
                             if (isTrue === undefined) {
-                                vscode.window.showInformationMessage(
-                                    localize("createNewConnection.booleanValue", "Operation Cancelled")
-                                );
+                                Gui.showMessage(this.profilesOpCancelled);
                                 return undefined;
                             }
                             schemaValues[value] = isTrue;
                             break;
-                        default:
-                            options = await this.optionsValue(value, schema);
-                            const defValue = await UIViews.inputBox(options);
+                        }
+                        default: {
+                            options = this.optionsValue(value, schema);
+                            const defValue = await Gui.showInputBox(options);
                             if (defValue === undefined) {
-                                vscode.window.showInformationMessage(
-                                    localize("createNewConnection.default", "Operation Cancelled")
-                                );
+                                Gui.showMessage(this.profilesOpCancelled);
                                 return undefined;
                             }
                             if (defValue === "") {
@@ -918,14 +854,16 @@ export class Profiles extends ProfilesCache {
                                 schemaValues[value] = defValue;
                             }
                             break;
+                        }
                     }
+                }
             }
         }
 
         try {
             for (const profile of this.allProfiles) {
                 if (profile.name.toLowerCase() === profileName.toLowerCase()) {
-                    vscode.window.showErrorMessage(
+                    Gui.errorMessage(
                         localize(
                             "createNewConnection.duplicateProfileName",
                             "Profile name already exists. Please create a profile using a different name"
@@ -935,35 +873,32 @@ export class Profiles extends ProfilesCache {
                 }
             }
             await this.saveProfile(schemaValues, schemaValues.name, profileType);
-            vscode.window.showInformationMessage("Profile " + newProfileName + " was created.");
+            Gui.showMessage(localize("createNewConnection.success", "Profile {0} was created.", newProfileName));
             // Trigger a ProfilesCache.createConfigInstance with a fresh Config.load
             // This shall capture any profiles created (v1 or v2)
-            await readConfigFromDisk();
+            await ProfilesUtils.readConfigFromDisk();
             return newProfileName;
         } catch (error) {
-            await errorHandling(error.message);
+            await errorHandling(error, profileName);
+            ZoweExplorerExtender.showZoweConfigError(error.message);
         }
     }
 
-    public async promptCredentials(sessionName: string, rePrompt?: boolean): Promise<string[]> {
+    public async promptCredentials(profile: string | zowe.imperative.IProfileLoaded, rePrompt?: boolean): Promise<string[]> {
+        ZoweLogger.trace("Profiles.promptCredentials called.");
         const userInputBoxOptions: vscode.InputBoxOptions = {
-            placeHolder: localize("createNewConnection.option.prompt.username.placeholder", "User Name"),
-            prompt: localize(
-                "createNewConnection.option.prompt.username",
-                "Enter the user name for the connection. Leave blank to not store."
-            ),
+            placeHolder: localize("promptCredentials.userInputBoxOptions.placeholder", "User Name"),
+            prompt: localize("promptCredentials.userInputBoxOptions.prompt", "Enter the user name for the connection. Leave blank to not store."),
         };
         const passwordInputBoxOptions: vscode.InputBoxOptions = {
-            placeHolder: localize("createNewConnection.option.prompt.password.placeholder", "Password"),
-            prompt: localize(
-                "createNewConnection.option.prompt.password",
-                "Enter the password for the connection. Leave blank to not store."
-            ),
+            placeHolder: localize("promptCredentials.passwordInputBoxOptions.placeholder", "Password"),
+            prompt: localize("promptCredentials.passwordInputBoxOptions.prompt", "Enter the password for the connection. Leave blank to not store."),
         };
 
         const promptInfo = await ZoweVsCodeExtension.updateCredentials(
             {
-                sessionName,
+                profile: typeof profile === "string" ? undefined : profile,
+                sessionName: typeof profile === "string" ? profile : undefined,
                 rePrompt,
                 secure: (await this.getProfileInfo()).isSecured(),
                 userInputBoxOptions,
@@ -972,38 +907,36 @@ export class Profiles extends ProfilesCache {
             ZoweExplorerApiRegister.getInstance()
         );
         if (!promptInfo) {
-            vscode.window.showInformationMessage(localize("promptCredentials.undefined.value", "Operation Cancelled"));
+            Gui.showMessage(this.profilesOpCancelled);
             return; // See https://github.com/zowe/vscode-extension-for-zowe/issues/1827
         }
 
-        const updSession = promptInfo.profile as zowe.imperative.ISession;
-        const returnValue = [updSession.user, updSession.password, updSession.base64EncodedAuth];
+        const returnValue: string[] = [promptInfo.profile.user, promptInfo.profile.password, promptInfo.profile.base64EncodedAuth];
         this.updateProfilesArrays(promptInfo);
         return returnValue;
     }
 
-    public async getDeleteProfile() {
+    public async getDeleteProfile(): Promise<zowe.imperative.IProfileLoaded> {
+        ZoweLogger.trace("Profiles.getDeleteProfile called.");
         const allProfiles: zowe.imperative.IProfileLoaded[] = this.allProfiles;
         const profileNamesList = allProfiles.map((temprofile) => {
             return temprofile.name;
         });
 
         if (!profileNamesList.length) {
-            vscode.window.showInformationMessage(localize("deleteProfile.noProfilesLoaded", "No profiles available"));
+            Gui.showMessage(localize("getDeleteProfile.noProfiles", "No profiles available"));
             return;
         }
 
         const quickPickList: vscode.QuickPickOptions = {
-            placeHolder: localize("deleteProfile.quickPickOption", "Select the profile you want to delete"),
+            placeHolder: localize("getDeleteProfile.qp.placeholder", "Select the profile you want to delete"),
             ignoreFocusOut: true,
             canPickMany: false,
         };
-        const sesName = await vscode.window.showQuickPick(profileNamesList, quickPickList);
+        const sesName = await Gui.showQuickPick(profileNamesList, quickPickList);
 
         if (sesName === undefined) {
-            vscode.window.showInformationMessage(
-                localize("deleteProfile.undefined.profilename", "Operation Cancelled")
-            );
+            Gui.showMessage(this.profilesOpCancelled);
             return;
         }
 
@@ -1015,8 +948,8 @@ export class Profiles extends ProfilesCache {
         ussTree: IZoweTree<IZoweUSSTreeNode>,
         jobsProvider: IZoweTree<IZoweJobTreeNode>,
         node?: IZoweNodeType
-    ) {
-        let deleteLabel: string;
+    ): Promise<void> {
+        ZoweLogger.trace("Profiles.deleteProfile called.");
         let deletedProfile: zowe.imperative.IProfileLoaded;
         if (!node) {
             deletedProfile = await this.getDeleteProfile();
@@ -1026,7 +959,8 @@ export class Profiles extends ProfilesCache {
         if (!deletedProfile) {
             return;
         }
-        deleteLabel = deletedProfile.name;
+
+        const deleteLabel = deletedProfile.name;
 
         if ((await this.getProfileInfo()).usingTeamConfig) {
             const currentProfile = await this.getProfileFromConfig(deleteLabel);
@@ -1037,7 +971,7 @@ export class Profiles extends ProfilesCache {
 
         const deleteSuccess = await this.deletePrompt(deletedProfile);
         if (!deleteSuccess) {
-            vscode.window.showInformationMessage(localize("deleteProfile.noSelected", "Operation Cancelled"));
+            Gui.showMessage(this.profilesOpCancelled);
             return;
         }
 
@@ -1099,7 +1033,7 @@ export class Profiles extends ProfilesCache {
 
         // Delete from Data Set Sessions list
         const dsSetting: any = {
-            ...vscode.workspace.getConfiguration().get(this.dsSchema),
+            ...SettingsConfig.getDirectValue(this.dsSchema),
         };
         let sessDS: string[] = dsSetting.sessions;
         let faveDS: string[] = dsSetting.favorites;
@@ -1111,11 +1045,11 @@ export class Profiles extends ProfilesCache {
         });
         dsSetting.sessions = sessDS;
         dsSetting.favorites = faveDS;
-        await vscode.workspace.getConfiguration().update(this.dsSchema, dsSetting, vscode.ConfigurationTarget.Global);
+        await SettingsConfig.setDirectValue(this.dsSchema, dsSetting);
 
         // Delete from USS Sessions list
         const ussSetting: any = {
-            ...vscode.workspace.getConfiguration().get(this.ussSchema),
+            ...SettingsConfig.getDirectValue(this.ussSchema),
         };
         let sessUSS: string[] = ussSetting.sessions;
         let faveUSS: string[] = ussSetting.favorites;
@@ -1127,11 +1061,11 @@ export class Profiles extends ProfilesCache {
         });
         ussSetting.sessions = sessUSS;
         ussSetting.favorites = faveUSS;
-        await vscode.workspace.getConfiguration().update(this.ussSchema, ussSetting, vscode.ConfigurationTarget.Global);
+        await SettingsConfig.setDirectValue(this.ussSchema, ussSetting);
 
         // Delete from Jobs Sessions list
         const jobsSetting: any = {
-            ...vscode.workspace.getConfiguration().get(this.jobsSchema),
+            ...SettingsConfig.getDirectValue(this.jobsSchema),
         };
         let sessJobs: string[] = jobsSetting.sessions;
         let faveJobs: string[] = jobsSetting.favorites;
@@ -1143,9 +1077,7 @@ export class Profiles extends ProfilesCache {
         });
         jobsSetting.sessions = sessJobs;
         jobsSetting.favorites = faveJobs;
-        await vscode.workspace
-            .getConfiguration()
-            .update(this.jobsSchema, jobsSetting, vscode.ConfigurationTarget.Global);
+        await SettingsConfig.setDirectValue(this.jobsSchema, jobsSetting);
 
         // Remove from list of all profiles
         const index = this.allProfiles.findIndex((deleteItem) => {
@@ -1156,46 +1088,36 @@ export class Profiles extends ProfilesCache {
         }
     }
 
-    public async validateProfiles(theProfile: zowe.imperative.IProfileLoaded) {
+    public async validateProfiles(theProfile: zowe.imperative.IProfileLoaded): Promise<IProfileValidation> {
+        ZoweLogger.trace("Profiles.validateProfiles called.");
         let filteredProfile: IProfileValidation;
         let profileStatus;
         const getSessStatus = await ZoweExplorerApiRegister.getInstance().getCommonApi(theProfile);
 
-        // Filter profilesForValidation to check if the profile is already validated as active
-        this.profilesForValidation.filter((profile) => {
-            if (profile.name === theProfile.name && profile.status === "active") {
-                filteredProfile = {
-                    status: profile.status,
-                    name: profile.name,
-                };
-            }
-        });
+        // Check if the profile is already validated as active
+        const desiredProfile = this.profilesForValidation.find((profile) => profile.name === theProfile.name && profile.status === "active");
+        if (desiredProfile) {
+            filteredProfile = {
+                status: desiredProfile.status,
+                name: desiredProfile.name,
+            };
+        }
 
         // If not yet validated or inactive, call getStatus and validate the profile
         // status will be stored in profilesForValidation
         if (filteredProfile === undefined) {
             try {
                 if (getSessStatus.getStatus) {
-                    profileStatus = await vscode.window.withProgress(
+                    profileStatus = await Gui.withProgress(
                         {
                             location: vscode.ProgressLocation.Notification,
-                            title: localize(
-                                "Profiles.validateProfiles.validationProgress",
-                                "Validating {0} Profile.",
-                                theProfile.name
-                            ),
+                            title: localize("validateProfiles.progress", "Validating {0} Profile.", theProfile.name),
                             cancellable: true,
                         },
                         async (progress, token) => {
                             token.onCancellationRequested(() => {
                                 // will be returned as undefined
-                                vscode.window.showInformationMessage(
-                                    localize(
-                                        "Profiles.validateProfiles.validationCancelled",
-                                        "Validating {0} was cancelled.",
-                                        theProfile.name
-                                    )
-                                );
+                                Gui.showMessage(localize("validateProfiles.cancelled", "Validating {0} was cancelled.", theProfile.name));
                             });
                             return getSessStatus.getStatus(theProfile, theProfile.type);
                         }
@@ -1229,13 +1151,8 @@ export class Profiles extends ProfilesCache {
                         break;
                 }
             } catch (error) {
-                // tslint:disable-next-line: no-magic-numbers
-                if (error.errorCode === 401) {
-                    await errorHandling(error, theProfile.name);
-                }
-
+                ZoweLogger.info(localize("validateProfiles.error", "Profile validation failed for {0}.", theProfile.name));
                 await errorHandling(error, theProfile.name);
-                this.log.debug("Validate Error - Invalid Profile: " + error);
                 filteredProfile = {
                     status: "inactive",
                     name: theProfile.name,
@@ -1248,122 +1165,63 @@ export class Profiles extends ProfilesCache {
     }
 
     public async ssoLogin(node?: IZoweNodeType, label?: string): Promise<void> {
-        let loginToken: string;
+        ZoweLogger.trace("Profiles.ssoLogin called.");
         let loginTokenType: string;
-        let creds: string[];
         let serviceProfile: zowe.imperative.IProfileLoaded;
-        let session: zowe.imperative.Session;
         if (node) {
             serviceProfile = node.getProfile();
         } else {
             serviceProfile = this.loadNamedProfile(label.trim());
         }
         // This check will handle service profiles that have username and password
-        if (serviceProfile.profile.user && serviceProfile.profile.password) {
-            vscode.window.showInformationMessage(
-                localize("ssoAuth.noBase", "This profile does not support token authentication.")
+        if (ProfilesUtils.isProfileUsingBasicAuth(serviceProfile)) {
+            Gui.showMessage(
+                localize("ssoAuth.usingBasicAuth", "This profile is using basic authentication and does not support token authentication.")
             );
             return;
         }
 
         try {
-            loginTokenType = ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).getTokenTypeName();
+            loginTokenType = await ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).getTokenTypeName();
         } catch (error) {
-            vscode.window.showInformationMessage(
-                localize("ssoAuth.noBase", "This profile does not support token authentication.")
-            );
+            ZoweLogger.warn(error);
+            Gui.showMessage(localize("ssoLogin.tokenType.error", "Error getting supported tokenType value for profile {0}", serviceProfile.name));
             return;
         }
-        if (loginTokenType && loginTokenType !== zowe.imperative.SessConstants.TOKEN_TYPE_APIML) {
-            // this will handle extenders
-            if (node) {
-                session = node.getSession();
+        try {
+            if (loginTokenType && loginTokenType !== zowe.imperative.SessConstants.TOKEN_TYPE_APIML) {
+                await this.loginWithRegularProfile(serviceProfile, node);
             } else {
-                session = ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).getSession();
+                await this.loginWithBaseProfile(serviceProfile, loginTokenType, node);
             }
-            creds = await this.loginCredentialPrompt();
-            if (!creds) {
-                return;
-            }
-            session.ISession.user = creds[0];
-            session.ISession.password = creds[1];
-            try {
-                loginToken = await ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).login(session);
-            } catch (error) {
-                vscode.window.showErrorMessage(
-                    localize("ssoLogin.unableToLogin", "Unable to log in. ") + error.message
-                );
-                return;
-            }
-        } else {
-            const baseProfile = await this.fetchBaseProfile();
-            if (baseProfile) {
-                creds = await this.loginCredentialPrompt();
-                if (!creds) {
-                    return;
-                }
-                try {
-                    const updSession = new zowe.imperative.Session({
-                        hostname: serviceProfile.profile.host,
-                        port: serviceProfile.profile.port,
-                        user: creds[0],
-                        password: creds[1],
-                        rejectUnauthorized: serviceProfile.profile.rejectUnauthorized,
-                        tokenType: loginTokenType,
-                        type: zowe.imperative.SessConstants.AUTH_TYPE_TOKEN,
-                    });
-                    loginToken = await ZoweExplorerApiRegister.getInstance()
-                        .getCommonApi(serviceProfile)
-                        .login(updSession);
-                    const updBaseProfile: zowe.imperative.IProfile = {
-                        tokenType: loginTokenType,
-                        tokenValue: loginToken,
-                    };
-                    await this.updateBaseProfileFileLogin(baseProfile, updBaseProfile);
-                    await this.refresh(ZoweExplorerApiRegister.getInstance());
-                    const baseIndex = this.allProfiles.findIndex((profile) => profile.name === baseProfile.name);
-                    this.allProfiles[baseIndex] = { ...baseProfile, profile: { ...baseProfile, ...updBaseProfile } };
-                    node.setProfileToChoice({
-                        ...node.getProfile(),
-                        profile: { ...node.getProfile().profile, ...updBaseProfile },
-                    });
-                } catch (error) {
-                    vscode.window.showErrorMessage(
-                        localize("ssoLogin.unableToLogin", "Unable to log in. ") + error.message
-                    );
-                    return;
-                }
-            }
+        } catch (err) {
+            const message = localize("ssoLogin.error", "Unable to log in with {0}. {1}", serviceProfile.name, err?.message);
+            ZoweLogger.error(message);
+            Gui.errorMessage(message);
+            return;
         }
-        vscode.window.showInformationMessage(
-            localize("ssoLogin.successful", "Login to authentication service was successful.")
-        );
     }
 
     public async ssoLogout(node: IZoweNodeType): Promise<void> {
+        ZoweLogger.trace("Profiles.ssoLogout called.");
         const serviceProfile = node.getProfile();
         // This check will handle service profiles that have username and password
-        if (serviceProfile.profile?.user && serviceProfile.profile?.password) {
-            vscode.window.showInformationMessage(
-                localize("ssoAuth.noBase", "This profile does not support token authentication.")
+        if (ProfilesUtils.isProfileUsingBasicAuth(serviceProfile)) {
+            Gui.showMessage(
+                localize("ssoAuth.usingBasicAuth", "This profile is using basic authentication and does not support token authentication.")
             );
             return;
         }
         try {
             // this will handle extenders
-            if (
-                serviceProfile.type !== "zosmf" &&
-                serviceProfile.profile?.tokenType !== zowe.imperative.SessConstants.TOKEN_TYPE_APIML
-            ) {
+            if (serviceProfile.type !== "zosmf" && serviceProfile.profile?.tokenType !== zowe.imperative.SessConstants.TOKEN_TYPE_APIML) {
                 await ZoweExplorerApiRegister.getInstance()
                     .getCommonApi(serviceProfile)
                     .logout(await node.getSession());
             } else {
                 // this will handle base profile apiml tokens
                 const baseProfile = await this.fetchBaseProfile();
-                const loginTokenType = ZoweExplorerApiRegister.getInstance()
-                    .getCommonApi(serviceProfile)
-                    .getTokenTypeName();
+                const loginTokenType = ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).getTokenTypeName();
                 const updSession = new zowe.imperative.Session({
                     hostname: serviceProfile.profile.host,
                     port: serviceProfile.profile.port,
@@ -1375,49 +1233,116 @@ export class Profiles extends ProfilesCache {
                 await ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).logout(updSession);
 
                 await this.updateBaseProfileFileLogout(baseProfile);
-                await this.refresh(ZoweExplorerApiRegister.getInstance());
             }
-            vscode.window.showInformationMessage(
-                localize("ssoLogout.successful", "Logout from authentication service was successful.")
-            );
+            Gui.showMessage(localize("ssoLogout.successful", "Logout from authentication service was successful for {0}.", serviceProfile.name));
+            await Profiles.getInstance().refresh(ZoweExplorerApiRegister.getInstance());
         } catch (error) {
-            vscode.window.showErrorMessage(localize("ssoLogout.unableToLogout", "Unable to log out. ") + error.message);
+            const message = localize("ssoLogout.error", "Unable to log out with {0}. {1}", serviceProfile.name, error?.message);
+            ZoweLogger.error(message);
+            Gui.errorMessage(message);
             return;
         }
     }
 
-    public async openConfigFile(filePath: string) {
+    public async openConfigFile(filePath: string): Promise<void> {
+        ZoweLogger.trace("Profiles.openConfigFile called.");
         const document = await vscode.workspace.openTextDocument(filePath);
-        await vscode.window.showTextDocument(document);
+        await Gui.showTextDocument(document);
+    }
+
+    /**
+     * gets secure properties for a profile
+     * @param profileName the name of the profile
+     * @returns {string[]} an array with the secure properties
+     */
+    public async getSecurePropsForProfile(profileName: string): Promise<string[]> {
+        if (!profileName) {
+            return [];
+        }
+        if ((await this.getProfileInfo()).usingTeamConfig) {
+            const config = (await this.getProfileInfo()).getTeamConfig();
+            return config.api.secure.securePropsForProfile(profileName);
+        }
+        const profAttrs = await this.getProfileFromConfig(profileName);
+        const mergedArgs = (await this.getProfileInfo()).mergeArgsForProfile(profAttrs);
+        return mergedArgs.knownArgs.filter((arg) => arg.secure).map((arg) => arg.argName);
+    }
+
+    private async loginWithBaseProfile(serviceProfile: zowe.imperative.IProfileLoaded, loginTokenType: string, node?: IZoweNodeType): Promise<void> {
+        const baseProfile = await this.fetchBaseProfile();
+        if (baseProfile) {
+            const creds = await this.loginCredentialPrompt();
+            if (!creds) {
+                return;
+            }
+            const updSession = new zowe.imperative.Session({
+                hostname: serviceProfile.profile.host,
+                port: serviceProfile.profile.port,
+                user: creds[0],
+                password: creds[1],
+                rejectUnauthorized: serviceProfile.profile.rejectUnauthorized,
+                tokenType: loginTokenType,
+                type: zowe.imperative.SessConstants.AUTH_TYPE_TOKEN,
+            });
+            const loginToken = await ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).login(updSession);
+            const updBaseProfile: zowe.imperative.IProfile = {
+                tokenType: loginTokenType,
+                tokenValue: loginToken,
+            };
+            await this.updateBaseProfileFileLogin(baseProfile, updBaseProfile);
+            const baseIndex = this.allProfiles.findIndex((profile) => profile.name === baseProfile.name);
+            this.allProfiles[baseIndex] = { ...baseProfile, profile: { ...baseProfile.profile, ...updBaseProfile } };
+            if (node) {
+                node.setProfileToChoice({
+                    ...node.getProfile(),
+                    profile: { ...node.getProfile().profile, ...updBaseProfile },
+                });
+            }
+            Gui.showMessage(localize("ssoLogin.successful", "Login to authentication service was successful."));
+        }
+    }
+
+    private async loginWithRegularProfile(serviceProfile: zowe.imperative.IProfileLoaded, node?: IZoweNodeType): Promise<void> {
+        let session: zowe.imperative.Session;
+        if (node) {
+            session = node.getSession();
+        } else {
+            session = await ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).getSession();
+        }
+        const creds = await this.loginCredentialPrompt();
+        if (!creds) {
+            return;
+        }
+        session.ISession.user = creds[0];
+        session.ISession.password = creds[1];
+        await ZoweExplorerApiRegister.getInstance().getCommonApi(serviceProfile).login(session);
+        const profIndex = this.allProfiles.findIndex((profile) => profile.name === serviceProfile.name);
+        this.allProfiles[profIndex] = { ...serviceProfile, profile: { ...serviceProfile, ...session } };
+        if (node) {
+            node.setProfileToChoice({
+                ...node.getProfile(),
+                profile: { ...node.getProfile().profile, ...session },
+            });
+        }
+        Gui.showMessage(localize("ssoLogin.successful", "Login to authentication service was successful."));
     }
 
     private async getConfigLocationPrompt(action: string): Promise<string> {
+        ZoweLogger.trace("Profiles.getConfigLocationPrompt called.");
         let placeHolderText: string;
         if (action === "create") {
-            placeHolderText = localize(
-                "getConfigLocationPrompt.placeholder.create",
-                "Select the location where the config file will be initialized"
-            );
+            placeHolderText = localize("getConfigLocationPrompt.placeholder.create", "Select the location where the config file will be initialized");
         } else {
-            placeHolderText = localize(
-                "getConfigLocationPrompt.placeholder.edit",
-                "Select the location of the config file to edit"
-            );
+            placeHolderText = localize("getConfigLocationPrompt.placeholder.edit", "Select the location of the config file to edit");
         }
         const quickPickOptions: vscode.QuickPickOptions = {
             placeHolder: placeHolderText,
             ignoreFocusOut: true,
             canPickMany: false,
         };
-        const globalText = localize(
-            "getConfigLocationPrompt.showQuickPick.global",
-            "Global: in the Zowe home directory"
-        );
-        const projectText = localize(
-            "getConfigLocationPrompt.showQuickPick.project",
-            "Project: in the current working directory"
-        );
-        const location = await vscode.window.showQuickPick([globalText, projectText], quickPickOptions);
+        const globalText = localize("getConfigLocationPrompt.showQuickPick.global", "Global: in the Zowe home directory");
+        const projectText = localize("getConfigLocationPrompt.showQuickPick.project", "Project: in the current working directory");
+        const location = await Gui.showQuickPick([globalText, projectText], quickPickOptions);
         // call check for existing and prompt here
         switch (location) {
             case globalText:
@@ -1428,7 +1353,8 @@ export class Profiles extends ProfilesCache {
         return;
     }
 
-    private async checkExistingConfig(filePath: string) {
+    private async checkExistingConfig(filePath: string): Promise<string> {
+        ZoweLogger.trace("Profiles.checkExistingConfig called.");
         let found = false;
         let location: string;
         const existingLayers = await this.getConfigLayers();
@@ -1438,19 +1364,18 @@ export class Profiles extends ProfilesCache {
                 const createButton = localize("checkExistingConfig.createNew.button", "Create New");
                 const message = localize(
                     "checkExistingConfig.createNew.message",
+                    // eslint-disable-next-line max-len
                     `A Team Configuration File already exists in this location\n{0}\nContinuing may alter the existing file, would you like to proceed?`,
                     file.path
                 );
-                await vscode.window
-                    .showInformationMessage(message, { modal: true }, ...[createButton])
-                    .then(async (selection) => {
-                        if (selection) {
-                            location = path.basename(file.path);
-                        } else {
-                            await this.openConfigFile(file.path);
-                            location = undefined;
-                        }
-                    });
+                await Gui.infoMessage(message, { items: [createButton], vsCodeOpts: { modal: true } }).then(async (selection) => {
+                    if (selection) {
+                        location = path.basename(file.path);
+                    } else {
+                        await this.openConfigFile(file.path);
+                        location = undefined;
+                    }
+                });
             }
         }
         if (found) {
@@ -1460,10 +1385,11 @@ export class Profiles extends ProfilesCache {
     }
 
     private async getConfigLayers(): Promise<zowe.imperative.IConfigLayer[]> {
+        ZoweLogger.trace("Profiles.getConfigLayers called.");
         const existingLayers: zowe.imperative.IConfigLayer[] = [];
         const config = await zowe.imperative.Config.load("zowe", {
             homeDir: getZoweDir(),
-            projectDir: vscode.workspace.workspaceFolders?.[0].uri.fsPath,
+            projectDir: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
         });
         const layers = config.layers;
         layers.forEach((layer) => {
@@ -1474,24 +1400,8 @@ export class Profiles extends ProfilesCache {
         return existingLayers;
     }
 
-    private async promptToRefreshForProfiles(rootPath: string) {
-        if (globals.ISTHEIA) {
-            const reloadButton = localize("createZoweSchema.reload.button", "Refresh Zowe Explorer");
-            const infoMsg = localize(
-                "createZoweSchema.reload.infoMessage",
-                "Team Configuration file created. Location: {0}. \n Please update file and refresh Zowe Explorer via button or command palette.",
-                rootPath
-            );
-            await vscode.window.showInformationMessage(infoMsg, ...[reloadButton]).then(async (selection) => {
-                if (selection === reloadButton) {
-                    await vscode.commands.executeCommand("zowe.extRefresh");
-                }
-            });
-        }
-        return undefined;
-    }
-
     private getProfileIcon(osLocInfo: zowe.imperative.IProfLocOsLoc[]): string[] {
+        ZoweLogger.trace("Profiles.getProfileIcon called.");
         const ret: string[] = [];
         for (const loc of osLocInfo ?? []) {
             if (loc.global) {
@@ -1503,10 +1413,8 @@ export class Profiles extends ProfilesCache {
         return ret;
     }
 
-    private async updateBaseProfileFileLogin(
-        profile: zowe.imperative.IProfileLoaded,
-        updProfile: zowe.imperative.IProfile
-    ) {
+    private async updateBaseProfileFileLogin(profile: zowe.imperative.IProfileLoaded, updProfile: zowe.imperative.IProfile): Promise<void> {
+        ZoweLogger.trace("Profiles.updateBaseProfileFileLogin called.");
         const upd = { profileName: profile.name, profileType: profile.type };
         const mProfileInfo = await this.getProfileInfo();
         const setSecure = mProfileInfo.isSecured();
@@ -1514,7 +1422,8 @@ export class Profiles extends ProfilesCache {
         await mProfileInfo.updateProperty({ ...upd, property: "tokenValue", value: updProfile.tokenValue, setSecure });
     }
 
-    private async updateBaseProfileFileLogout(profile: zowe.imperative.IProfileLoaded) {
+    private async updateBaseProfileFileLogout(profile: zowe.imperative.IProfileLoaded): Promise<void> {
+        ZoweLogger.trace("Profiles.updateBaseProfileFileLogout called.");
         const mProfileInfo = await this.getProfileInfo();
         const setSecure = mProfileInfo.isSecured();
         const prof = mProfileInfo.getAllProfiles(profile.type).find((p) => p.profName === profile.name);
@@ -1524,94 +1433,79 @@ export class Profiles extends ProfilesCache {
     }
 
     private async loginCredentialPrompt(): Promise<string[]> {
+        ZoweLogger.trace("Profiles.loginCredentialPrompt called.");
         let newPass: string;
         const newUser = await this.userInfo();
         if (!newUser) {
-            vscode.window.showInformationMessage(localize("ssoLogin.undefined.username", "Operation Cancelled"));
+            Gui.showMessage(this.profilesOpCancelled);
             return;
         } else {
             newPass = await this.passwordInfo();
             if (!newPass) {
-                vscode.window.showInformationMessage(localize("ssoLogin.undefined.username", "Operation Cancelled"));
+                Gui.showMessage(this.profilesOpCancelled);
                 return;
             }
         }
         return [newUser, newPass];
     }
 
-    private async deletePrompt(deletedProfile: zowe.imperative.IProfileLoaded) {
+    private async deletePrompt(deletedProfile: zowe.imperative.IProfileLoaded): Promise<string> {
+        ZoweLogger.trace("Profiles.deletePrompt called.");
         const profileName = deletedProfile.name;
-        this.log.debug(localize("deleteProfile.log.debug", "Deleting profile ") + profileName);
+        ZoweLogger.info(localize("deletePrompt.deleting", "Deleting profile {0}", profileName));
         const quickPickOptions: vscode.QuickPickOptions = {
-            placeHolder: localize(
-                "deleteProfile.quickPickOption",
-                "Delete {0}? This will permanently remove it from your system.",
-                profileName
-            ),
+            placeHolder: localize("deletePrompt.qp.placeholder", "Delete {0}? This will permanently remove it from your system.", profileName),
             ignoreFocusOut: true,
             canPickMany: false,
         };
         // confirm that the user really wants to delete
         if (
-            (await vscode.window.showQuickPick(
-                [
-                    localize("deleteProfile.showQuickPick.delete", "Delete"),
-                    localize("deleteProfile.showQuickPick.cancel", "Cancel"),
-                ],
+            (await Gui.showQuickPick(
+                [localize("deletePrompt.qpButton.delete", "Delete"), localize("deletePrompt.qpButton.cancel", "Cancel")],
                 quickPickOptions
-            )) !== localize("deleteProfile.showQuickPick.delete", "Delete")
+            )) !== localize("deletePrompt.qpButton.delete", "Delete")
         ) {
-            this.log.debug(
-                localize("deleteProfile.showQuickPick.log.debug", "User picked Cancel. Cancelling delete of profile")
-            );
+            ZoweLogger.info(localize("deletePrompt.showQuickPick.cancelled", "Cancelling deletion of profile {0}", deletedProfile.name));
             return;
         }
 
         try {
             await this.deleteProfileOnDisk(deletedProfile);
         } catch (error) {
-            this.log.error(
-                localize("deleteProfile.delete.log.error", "Error encountered when deleting profile! ") +
-                    JSON.stringify(error)
+            ZoweLogger.error(
+                localize("deletePrompt.error", "Error encountered when deleting profile {0}. {1}", deletedProfile.name, JSON.stringify(error))
             );
-            await errorHandling(error, profileName, error.message);
+            await errorHandling(error, profileName);
             throw error;
         }
 
-        vscode.window.showInformationMessage(
-            localize("deleteProfile.success.info", "Profile {0} was deleted.", profileName)
-        );
+        Gui.showMessage(localize("deletePrompt.success", "Profile {0} was deleted.", profileName));
         return profileName;
     }
 
     // ** Functions for handling Profile Information */
 
     private async urlInfo(input?): Promise<IUrlValidator | undefined> {
+        ZoweLogger.trace("Profiles.urlInfo called.");
         let zosURL: string;
         if (input) {
             zosURL = input;
         }
         const options: vscode.InputBoxOptions = {
-            prompt: localize(
-                "createNewConnection.option.prompt.url",
-                "Enter a z/OS URL in the format 'https://url:port'."
-            ),
+            prompt: localize("urlInfo.inputBoxOptions.prompt", "Enter a z/OS URL in the format 'https://url:port'."),
             value: zosURL,
             ignoreFocusOut: true,
-            placeHolder: localize("createNewConnection.option.prompt.url.placeholder", "https://url:port"),
+            placeHolder: localize("urlInfo.inputBoxOptions.placeholder", "https://url:port"),
             validateInput: (text: string): string | undefined => {
                 const host = this.getUrl(text);
                 if (this.validateAndParseUrl(host).valid) {
                     return undefined;
                 } else {
-                    return localize(
-                        "createNewConnection.invalidzosURL",
-                        "Please enter a valid host URL in the format 'company.com'."
-                    );
+                    return localize("urlInfo.invalidzosURL", "Please enter a valid host URL in the format 'company.com'.");
                 }
             },
         };
-        zosURL = await UIViews.inputBox(options);
+        zosURL = await Gui.showInputBox(options);
 
         let hostName: string;
         if (!zosURL) {
@@ -1624,6 +1518,7 @@ export class Profiles extends ProfilesCache {
     }
 
     private getUrl(host: string): string {
+        ZoweLogger.trace("Profiles.getUrl called.");
         let url: string;
         if (host.includes(":")) {
             if (host.includes("/")) {
@@ -1637,23 +1532,24 @@ export class Profiles extends ProfilesCache {
         return url;
     }
 
-    private async portInfo(input: string, schema: {}) {
+    private async portInfo(input: string, schema: {}): Promise<number> {
+        ZoweLogger.trace("Profiles.portInfo called.");
         let options: vscode.InputBoxOptions;
         let port: number;
-        if (schema[input].optionDefinition.hasOwnProperty("defaultValue")) {
+        if ("defaultValue" in schema[input].optionDefinition) {
             options = {
                 prompt: schema[input].optionDefinition.description.toString(),
                 value: schema[input].optionDefinition.defaultValue.toString(),
             };
         } else {
             options = {
-                placeHolder: localize("createNewConnection.option.prompt.port.placeholder", "Port Number"),
+                placeHolder: localize("portInfo.inputBoxOptions.placeholder", "Port Number"),
                 prompt: schema[input].optionDefinition.description.toString(),
             };
         }
-        port = Number(await UIViews.inputBox(options));
+        port = Number(await Gui.showInputBox(options));
 
-        if (port === 0 && schema[input].optionDefinition.hasOwnProperty("defaultValue")) {
+        if (port === 0 && "defaultValue" in schema[input].optionDefinition) {
             port = Number(schema[input].optionDefinition.defaultValue.toString());
         } else {
             return port;
@@ -1661,34 +1557,31 @@ export class Profiles extends ProfilesCache {
         return port;
     }
 
-    private async userInfo(input?) {
+    private async userInfo(input?: string): Promise<string> {
+        ZoweLogger.trace("Profiles.userInfo called.");
         let userName: string;
 
         if (input) {
             userName = input;
         }
         InputBoxOptions = {
-            placeHolder: localize("createNewConnection.option.prompt.username.placeholder", "User Name"),
-            prompt: localize(
-                "createNewConnection.option.prompt.username",
-                "Enter the user name for the connection. Leave blank to not store."
-            ),
+            placeHolder: localize("userInfo.inputBoxOptions.placeholder", "User Name"),
+            prompt: localize("userInfo.inputBoxOptions.prompt", "Enter the user name for the connection. Leave blank to not store."),
             ignoreFocusOut: true,
             value: userName,
         };
-        userName = await UIViews.inputBox(InputBoxOptions);
+        userName = await Gui.showInputBox(InputBoxOptions);
 
         if (userName === undefined) {
-            vscode.window.showInformationMessage(
-                localize("createNewConnection.undefined.passWord", "Operation Cancelled")
-            );
+            Gui.showMessage(this.profilesOpCancelled);
             return undefined;
         }
 
         return userName.trim();
     }
 
-    private async passwordInfo(input?) {
+    private async passwordInfo(input?: string): Promise<string> {
+        ZoweLogger.trace("Profiles.passwordInfo called.");
         let passWord: string;
 
         if (input) {
@@ -1696,39 +1589,29 @@ export class Profiles extends ProfilesCache {
         }
 
         InputBoxOptions = {
-            placeHolder: localize("createNewConnection.option.prompt.password.placeholder", "Password"),
-            prompt: localize(
-                "createNewConnection.option.prompt.password",
-                "Enter the password for the connection. Leave blank to not store."
-            ),
+            placeHolder: localize("passwordInfo.inputBoxOptions.placeholder", "Password"),
+            prompt: localize("passwordInfo.inputBoxOptions.prompt", "Enter the password for the connection. Leave blank to not store."),
             password: true,
             ignoreFocusOut: true,
             value: passWord,
         };
-        passWord = await UIViews.inputBox(InputBoxOptions);
+        passWord = await Gui.showInputBox(InputBoxOptions);
 
         if (passWord === undefined) {
-            vscode.window.showInformationMessage(
-                localize("createNewConnection.undefined.passWord", "Operation Cancelled")
-            );
+            Gui.showMessage(this.profilesOpCancelled);
             return undefined;
         }
 
         return passWord.trim();
     }
 
-    private async ruInfo(input?) {
+    private async ruInfo(input?: boolean): Promise<boolean> {
+        ZoweLogger.trace("Profiles.ruInfo called.");
         let rejectUnauthorize: boolean;
         let placeholder: string;
         let selectRU: string[];
-        const falseString = localize(
-            "createNewConnection.ru.false",
-            "False - Accept connections with self-signed certificates"
-        );
-        const trueString = localize(
-            "createNewConnection.ru.true",
-            "True - Reject connections with self-signed certificates"
-        );
+        const falseString = localize("ruInfo.qp.placeholder.false", "False - Accept connections with self-signed certificates");
+        const trueString = localize("ruInfo.qp.placeholder.true", "True - Reject connections with self-signed certificates");
 
         if (input !== undefined) {
             rejectUnauthorize = input;
@@ -1740,10 +1623,7 @@ export class Profiles extends ProfilesCache {
                 selectRU = [trueString, falseString];
             }
         } else {
-            placeholder = localize(
-                "createNewConnection.option.prompt.ru.placeholder",
-                "Reject Unauthorized Connections"
-            );
+            placeholder = localize("ruInfo.qp.placeholder.default", "Reject Unauthorized Connections");
             selectRU = [trueString, falseString];
         }
 
@@ -1755,23 +1635,22 @@ export class Profiles extends ProfilesCache {
 
         const ruOptions = Array.from(selectRU);
 
-        const chosenRU = await vscode.window.showQuickPick(ruOptions, quickPickOptions);
+        const chosenRU = await Gui.showQuickPick(ruOptions, quickPickOptions);
 
         if (chosenRU && chosenRU.includes(trueString)) {
             rejectUnauthorize = true;
         } else if (chosenRU && chosenRU.includes(falseString)) {
             rejectUnauthorize = false;
         } else {
-            vscode.window.showInformationMessage(
-                localize("createNewConnection.rejectUnauthorize", "Operation Cancelled")
-            );
+            Gui.showMessage(this.profilesOpCancelled);
             return undefined;
         }
 
         return rejectUnauthorize;
     }
 
-    private async boolInfo(input: string, schema: {}) {
+    private async boolInfo(input: string, schema: {}): Promise<boolean> {
+        ZoweLogger.trace("Profiles.boolInfo called.");
         let isTrue: boolean;
         const description: string = schema[input].optionDefinition.description.toString();
         const quickPickBooleanOptions: vscode.QuickPickOptions = {
@@ -1780,7 +1659,7 @@ export class Profiles extends ProfilesCache {
             canPickMany: false,
         };
         const selectBoolean = ["True", "False"];
-        const chosenValue = await vscode.window.showQuickPick(selectBoolean, quickPickBooleanOptions);
+        const chosenValue = await Gui.showQuickPick(selectBoolean, quickPickBooleanOptions);
         if (chosenValue === selectBoolean[0]) {
             isTrue = true;
         } else if (chosenValue === selectBoolean[1]) {
@@ -1791,7 +1670,8 @@ export class Profiles extends ProfilesCache {
         return isTrue;
     }
 
-    private async optionsValue(value: string, schema: {}, input?: string): Promise<vscode.InputBoxOptions> {
+    private optionsValue(value: string, schema: {}, input?: string): vscode.InputBoxOptions {
+        ZoweLogger.trace("Profiles.optionsValue called.");
         let options: vscode.InputBoxOptions;
         const description: string = schema[value].optionDefinition.description.toString();
         let editValue: any;
@@ -1802,7 +1682,7 @@ export class Profiles extends ProfilesCache {
                 prompt: description,
                 value: editValue,
             };
-        } else if (schema[value].optionDefinition.hasOwnProperty("defaultValue")) {
+        } else if ("defaultValue" in schema[value].optionDefinition) {
             options = {
                 prompt: description,
                 value: schema[value].optionDefinition.defaultValue,
@@ -1816,7 +1696,8 @@ export class Profiles extends ProfilesCache {
         return options;
     }
 
-    private async checkType(input?): Promise<string> {
+    private checkType(input?): string {
+        ZoweLogger.trace("Profiles.checkType called.");
         const isTrue = Array.isArray(input);
         let test: string;
         let index: number;
@@ -1849,7 +1730,8 @@ export class Profiles extends ProfilesCache {
      * @returns
      */
 
-    private async updateProfile(updProfileInfo, rePrompt?: boolean) {
+    private async updateProfile(updProfileInfo, rePrompt?: boolean): Promise<void> {
+        ZoweLogger.trace("Profiles.updateProfile called.");
         if (zowe.imperative.ImperativeConfig.instance.config?.exists) {
             return;
         }
@@ -1899,25 +1781,31 @@ export class Profiles extends ProfilesCache {
         const updateParms: zowe.imperative.IUpdateProfile = {
             name: this.loadedProfile.name,
             merge: false,
-            profile: OrigProfileInfo as zowe.imperative.IProfile,
+            profile: OrigProfileInfo,
         };
         try {
-            this.getCliProfileManager(this.loadedProfile.type).update(updateParms);
+            await this.getCliProfileManager(this.loadedProfile.type).update(updateParms);
         } catch (error) {
-            vscode.window.showErrorMessage(error.message);
+            const message = localize(
+                "updateProfile.error",
+                "An error was encountered while updating the profile {0}. {1}",
+                updProfileInfo.name,
+                error?.message ?? error
+            );
+            ZoweLogger.error(message);
+            Gui.errorMessage(message);
         }
     }
 
     // Temporary solution for handling unsecure profiles until CLI team's work is made
     // Remove secure properties and set autoStore to false when vscode setting is true
     private createNonSecureProfile(newConfig: zowe.imperative.IConfig): void {
-        const configuration: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration();
-        const isSecureCredsEnabled: boolean = configuration.get(globals.SETTINGS_SECURE_CREDENTIALS_ENABLED);
+        ZoweLogger.trace("Profiles.createNonSecureProfile called.");
+        const isSecureCredsEnabled: boolean = SettingsConfig.getDirectValue(globals.SETTINGS_SECURE_CREDENTIALS_ENABLED);
         if (!isSecureCredsEnabled) {
             for (const profile of Object.entries(newConfig.profiles)) {
                 delete newConfig.profiles[profile[0]].secure;
             }
-            this.updateImperativeSettings();
             newConfig.autoStore = false;
         }
     }

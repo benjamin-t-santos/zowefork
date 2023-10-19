@@ -1,29 +1,30 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
+jest.mock("vscode");
 
 import { imperative } from "@zowe/cli";
-import {
-    createISession,
-    createAltTypeIProfile,
-    createTreeView,
-    createIProfile,
-    createInstanceOfProfile,
-} from "../../__mocks__/mockCreators/shared";
+import { createISession, createAltTypeIProfile, createTreeView, createIProfile, createInstanceOfProfile } from "../../__mocks__/mockCreators/shared";
 import { createDatasetSessionNode, createDatasetTree } from "../../__mocks__/mockCreators/datasets";
 import { createUSSSessionNode, createUSSTree } from "../../__mocks__/mockCreators/uss";
 import { createJobsTree, createIJobObject } from "../../__mocks__/mockCreators/jobs";
 import { ZoweExplorerExtender } from "../../src/ZoweExplorerExtender";
 import { Profiles } from "../../src/Profiles";
+import * as path from "path";
+import * as fs from "fs";
+import { getZoweDir, Gui } from "@zowe/zowe-explorer-api";
+import * as profUtils from "../../src/utils/ProfilesUtils";
+import { ZoweLogger } from "../../src/utils/LoggerUtils";
+jest.mock("fs");
 
 describe("ZoweExplorerExtender unit tests", () => {
     async function createBlockMocks() {
@@ -36,8 +37,12 @@ describe("ZoweExplorerExtender unit tests", () => {
             instTest: ZoweExplorerExtender.getInstance(),
             profiles: null,
             mockGetConfiguration: jest.fn(),
+            mockErrorMessage: jest.fn(),
+            mockExistsSync: jest.fn(),
+            mockTextDocument: jest.fn(),
         };
 
+        Object.defineProperty(fs, "existsSync", { value: newMocks.mockExistsSync, configurable: true });
         newMocks.profiles = createInstanceOfProfile(newMocks.imperativeProfile);
         Object.defineProperty(Profiles, "getInstance", {
             value: jest
@@ -49,11 +54,34 @@ describe("ZoweExplorerExtender unit tests", () => {
                 .mockReturnValue(newMocks.profiles),
         });
         Object.defineProperty(vscode.window, "createTreeView", { value: jest.fn(), configurable: true });
+        Object.defineProperty(vscode.window, "showErrorMessage", {
+            value: newMocks.mockErrorMessage,
+            configurable: true,
+        });
+        Object.defineProperty(vscode.window, "showTextDocument", {
+            value: newMocks.mockTextDocument,
+            configurable: true,
+        });
         Object.defineProperty(vscode.workspace, "getConfiguration", {
             value: newMocks.mockGetConfiguration,
             configurable: true,
         });
-
+        Object.defineProperty(ZoweLogger, "warn", {
+            value: jest.fn(),
+            configurable: true,
+        });
+        Object.defineProperty(ZoweLogger, "error", {
+            value: jest.fn(),
+            configurable: true,
+        });
+        Object.defineProperty(ZoweLogger, "trace", {
+            value: jest.fn(),
+            configurable: true,
+        });
+        Object.defineProperty(Profiles.getInstance(), "addToConfigArray", {
+            value: jest.fn(),
+            configurable: true,
+        });
         return newMocks;
     }
 
@@ -91,5 +119,106 @@ describe("ZoweExplorerExtender unit tests", () => {
         expect(blockMocks.instTest.datasetProvider).toBe(undefined);
         expect(blockMocks.instTest.ussFileProvider).toBe(undefined);
         expect(blockMocks.instTest.jobsProvider).toBe(undefined);
+    });
+
+    it("properly handles Zowe config error dialog based on user input", async () => {
+        const blockMocks = await createBlockMocks();
+        ZoweExplorerExtender.createInstance();
+
+        Object.defineProperty(vscode.Uri, "file", { value: jest.fn(), configurable: true });
+        Object.defineProperty(Gui, "showTextDocument", { value: jest.fn(), configurable: true });
+
+        const zoweDir = getZoweDir();
+        const userInputs = [
+            {
+                choice: undefined,
+                configError: "Error parsing JSON",
+                fileChecks: ["zowe.config.user.json"],
+                mockExistsSync: blockMocks.mockExistsSync.mockImplementationOnce,
+            },
+            {
+                choice: "Show Config",
+                configError: "Error parsing JSON",
+                fileChecks: ["zowe.config.user.json"],
+                shouldFail: true,
+                mockExistsSync: blockMocks.mockExistsSync.mockImplementationOnce,
+            },
+            {
+                choice: "Show Config",
+                configError: `Error parsing JSON in the file '${path.join(zoweDir, "zowe.config.user.json")}'`,
+                shouldFail: false,
+                fileChecks: ["zowe.config.user.json"],
+                mockExistsSync: blockMocks.mockExistsSync.mockImplementationOnce,
+            },
+            {
+                choice: "Show Config",
+                configError: "Error parsing JSON",
+                fileChecks: ["zowe.config.user.json", "zowe.config.json"],
+                shouldFail: false,
+                mockExistsSync: blockMocks.mockExistsSync.mockImplementationOnce,
+            },
+            {
+                choice: "Show Config",
+                configError: `Error reading profile file ("${path.join(zoweDir, "profiles", "exampleType", "exampleType_meta.yaml")}")`,
+                fileChecks: ["zowe.config.user.json", "zowe.config.json"],
+                v1: true,
+                mockExistsSync: blockMocks.mockExistsSync.mockImplementation,
+            },
+        ];
+        for (const userInput of userInputs) {
+            blockMocks.mockErrorMessage.mockImplementationOnce((_msg, ..._items) => Promise.resolve(userInput.choice));
+            if (userInput.fileChecks.length > 1) {
+                userInput.mockExistsSync((_path) => false);
+            }
+            await ZoweExplorerExtender.showZoweConfigError(userInput.configError);
+            expect(blockMocks.mockErrorMessage).toHaveBeenCalledWith(
+                'Error encountered when loading your Zowe config. Click "Show Config" for more details.',
+                undefined,
+                "Show Config"
+            );
+            if (userInput.choice == null) {
+                expect(Gui.showTextDocument).not.toHaveBeenCalled();
+            } else {
+                if (userInput.v1) {
+                    expect(vscode.Uri.file).toHaveBeenCalledWith(path.join(zoweDir, "profiles", "exampleType", "exampleType_meta.yaml"));
+                } else {
+                    for (const fileName of userInput.fileChecks) {
+                        expect(blockMocks.mockExistsSync).toHaveBeenCalledWith(path.join(zoweDir, fileName));
+                    }
+                }
+                if (userInput.shouldFail) {
+                    expect(Gui.showTextDocument).not.toHaveBeenCalled();
+                } else {
+                    expect(Gui.showTextDocument).toHaveBeenCalled();
+                }
+            }
+        }
+    });
+
+    it("should initialize zowe", async () => {
+        const blockMocks = await createBlockMocks();
+        Object.defineProperty(vscode.workspace, "workspaceFolders", {
+            value: [
+                {
+                    uri: {
+                        fsPath: "test",
+                    },
+                },
+            ],
+            configurable: true,
+        });
+        Object.defineProperty(imperative.CliProfileManager, "initialize", {
+            value: jest.fn(),
+            configurable: true,
+        });
+
+        const readProfilesFromDiskSpy = jest.fn();
+        const refreshProfilesQueueAddSpy = jest.spyOn((ZoweExplorerExtender as any).refreshProfilesQueue, "add");
+        jest.spyOn(profUtils.ProfilesUtils, "getProfileInfo").mockReturnValue({
+            readProfilesFromDisk: readProfilesFromDiskSpy,
+        } as any);
+        await expect(blockMocks.instTest.initForZowe("USS", ["" as any])).resolves.not.toThrow();
+        expect(readProfilesFromDiskSpy).toBeCalledTimes(1);
+        expect(refreshProfilesQueueAddSpy).toHaveBeenCalledTimes(1);
     });
 });

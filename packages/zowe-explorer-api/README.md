@@ -1,5 +1,8 @@
 # Extensibility API for Zowe Explorer
 
+[![version](https://img.shields.io/npm/v/@zowe/zowe-explorer-api)](https://img.shields.io/npm/v/@zowe/zowe-explorer-api)
+[![downloads](https://img.shields.io/npm/dt/@zowe/zowe-explorer-api)](https://img.shields.io/npm/dt/@zowe/zowe-explorer-api)
+
 Extensibility API for Zowe Explorer is a collection of APIs that can be used to extend the [Zowe Explorer](https://github.com/zowe/vscode-extension-for-zowe) VS Code extension with alternative z/OS interaction protocols and new capabilities.
 
 The current state of this API is experimental, but the goal is provide a stabilized version that can be used for Zowe Conformance certifications in the future. See this issue for more details: <https://github.com/zowe/vscode-extension-for-zowe/issues/837>.
@@ -40,11 +43,11 @@ import * as vscode from "vscode";
 
 imports.
 
-See this [special extension document](../../docs/README-Extending.md) to learn more about the Tree APIs available.
+See this [documentation on Extending Zowe Explorer](https://github.com/zowe/vscode-extension-for-zowe/wiki/Extending-Zowe-Explorer) to learn more about the Tree APIs available.
 
 ## Logger API
 
-See this [special extension document](https://github.com/zowe/vscode-extension-for-zowe/blob/main/docs/extenders/Error%20Handling.md#logging-of-error-message) for more information about using the Logger API.
+See this [special extension document](https://github.com/zowe/vscode-extension-for-zowe/wiki/Error-Handling-for-Extenders#logging-of-error-message) for more information about using the Logger API.
 
 ## Providing feedback or help contributing
 

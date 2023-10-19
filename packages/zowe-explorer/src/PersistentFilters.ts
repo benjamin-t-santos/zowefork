@@ -1,16 +1,18 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
+import * as api from "@zowe/zowe-explorer-api";
 import * as globals from "./globals";
+import { SettingsConfig } from "./utils/SettingsConfig";
 
 /**
  * Standard history and favorite persistance handling routines
@@ -19,32 +21,19 @@ import * as globals from "./globals";
  * @class PersistentFilters
  */
 export class PersistentFilters {
-    /**
-     * Retrieves a generic setting either in user or workspace.
-     * <pre>{@code
-     *  PersistentFilters.getDirectValue("zowe.commands.alwaysEdit") as boolean;
-     * }</pre>
-     * @param key - string. The attribute value that needs retrieving
-     */
-    public static getDirectValue(key: string): string | boolean | undefined {
-        const settings: any = { ...vscode.workspace.getConfiguration() };
-        return settings.get(key);
-    }
     private static readonly favorites: string = "favorites";
     private static readonly searchHistory: string = "searchHistory";
     private static readonly fileHistory: string = "fileHistory";
     private static readonly sessions: string = "sessions";
+    private static readonly templates: string = "templates";
 
     public schema: string;
     private mSearchHistory: string[] = [];
     private mFileHistory: string[] = [];
     private mSessions: string[] = [];
+    private mDsTemplates: api.DataSetAllocTemplate[] = [];
 
-    constructor(
-        schema: string,
-        private maxSearchHistory = globals.MAX_SEARCH_HISTORY,
-        private maxFileHistory = globals.MAX_FILE_HISTORY
-    ) {
+    public constructor(schema: string, private maxSearchHistory = globals.MAX_SEARCH_HISTORY, private maxFileHistory = globals.MAX_FILE_HISTORY) {
         this.schema = schema;
         this.initialize();
     }
@@ -65,7 +54,7 @@ export class PersistentFilters {
      *
      * @param {string} criteria - a line of search criteria
      */
-    public async addSearchHistory(criteria: string) {
+    public addSearchHistory(criteria: string): void {
         if (criteria) {
             // Remove any entries that match
             this.mSearchHistory = this.mSearchHistory.filter((element) => {
@@ -95,7 +84,7 @@ export class PersistentFilters {
      *
      * @param {string} criteria - a line of search criteria
      */
-    public async addFileHistory(criteria: string) {
+    public addFileHistory(criteria: string): void {
         if (criteria) {
             criteria = criteria.toUpperCase();
             // Remove any entries that match
@@ -114,6 +103,26 @@ export class PersistentFilters {
         }
     }
 
+    public addDsTemplateHistory(criteria: api.DataSetAllocTemplate): void {
+        if (criteria) {
+            let newTemplateName: string;
+            Object.entries(criteria).forEach(([key, value]) => {
+                newTemplateName = key;
+            });
+            // Remove any entries that match
+            this.mDsTemplates = this.mDsTemplates.filter((template) => {
+                let historyName: string;
+                Object.entries(template).forEach(([key1, value]) => {
+                    historyName = key1;
+                });
+                return historyName !== newTemplateName;
+            });
+            // Add value to front of stack
+            this.mDsTemplates.unshift(criteria);
+            this.updateDsTemplateHistory();
+        }
+    }
+
     /**
      * Adds one line of session history to the local store and
      * updates persistent store.
@@ -123,7 +132,7 @@ export class PersistentFilters {
      *
      * @param {string} criteria - a session name
      */
-    public async addSession(criteria: string) {
+    public addSession(criteria: string): void {
         // Remove any entries that match
         this.mSessions = this.mSessions.filter((element) => {
             return element.trim() !== criteria.trim();
@@ -151,6 +160,14 @@ export class PersistentFilters {
         return this.mFileHistory;
     }
 
+    public getDsTemplates(): api.DataSetAllocTemplate[] {
+        const dsTemplateLines: api.DataSetAllocTemplate[] = vscode.workspace.getConfiguration(this.schema).get(PersistentFilters.templates);
+        if (dsTemplateLines.length !== this.mDsTemplates.length) {
+            this.mDsTemplates = dsTemplateLines;
+        }
+        return this.mDsTemplates;
+    }
+
     public readFavorites(): string[] {
         if (vscode.workspace.getConfiguration(this.schema)) {
             return vscode.workspace.getConfiguration(this.schema).get(PersistentFilters.favorites);
@@ -162,7 +179,7 @@ export class PersistentFilters {
     /* Remove functions, for removing one item from the persistent arrays
     /*********************************************************************************************************************************************/
 
-    public async removeSession(name: string) {
+    public removeSession(name: string): void {
         // Remove any entries that match
         this.mSessions = this.mSessions.filter((element) => {
             return element.trim() !== name.trim();
@@ -173,83 +190,99 @@ export class PersistentFilters {
     /**
      * @param name - Should be in format "[session]: DATASET.QUALIFIERS" or "[session]: /file/path", as appropriate
      */
-    public async removeFileHistory(name: string) {
+    public removeFileHistory(name: string): Thenable<void> {
         const index = this.mFileHistory.findIndex((fileHistoryItem) => {
             return fileHistoryItem.includes(name.toUpperCase());
         });
         if (index >= 0) {
             this.mFileHistory.splice(index, 1);
         }
-        await this.updateFileHistory();
+        return this.updateFileHistory();
     }
 
     /*********************************************************************************************************************************************/
     /* Reset functions, for resetting the persistent array to empty (in the extension and in settings.json)
     /*********************************************************************************************************************************************/
 
-    public async resetSearchHistory() {
+    public resetSearchHistory(): void {
         this.mSearchHistory = [];
         this.updateSearchHistory();
     }
 
-    public async resetSessions() {
+    public resetSessions(): void {
         this.mSessions = [];
         this.updateSessions();
     }
 
-    public async resetFileHistory() {
+    public resetFileHistory(): void {
         this.mFileHistory = [];
         this.updateFileHistory();
+    }
+
+    public resetDsTemplateHistory(): void {
+        this.mDsTemplates = [];
+        this.updateDsTemplateHistory();
     }
 
     /*********************************************************************************************************************************************/
     /* Update functions, for updating the settings.json file in VSCode
     /*********************************************************************************************************************************************/
 
-    public async updateFavorites(favorites: string[]) {
+    public updateFavorites(favorites: string[]): Thenable<void> {
         // settings are read-only, so were cloned
         const settings: any = { ...vscode.workspace.getConfiguration(this.schema) };
         if (settings.persistence) {
             settings.favorites = favorites;
-            await vscode.workspace.getConfiguration().update(this.schema, settings, vscode.ConfigurationTarget.Global);
+            return SettingsConfig.setDirectValue(this.schema, settings);
         }
     }
 
-    private async updateSearchHistory() {
+    private updateSearchHistory(): Thenable<void> {
         // settings are read-only, so make a clone
         const settings: any = { ...vscode.workspace.getConfiguration(this.schema) };
         if (settings.persistence) {
             settings.searchHistory = this.mSearchHistory;
-            await vscode.workspace.getConfiguration().update(this.schema, settings, vscode.ConfigurationTarget.Global);
+            return SettingsConfig.setDirectValue(this.schema, settings);
         }
     }
 
-    private async updateSessions() {
+    private updateSessions(): Thenable<void> {
         // settings are read-only, so make a clone
         const settings: any = { ...vscode.workspace.getConfiguration(this.schema) };
         if (settings.persistence) {
             settings.sessions = this.mSessions;
-            await vscode.workspace.getConfiguration().update(this.schema, settings, vscode.ConfigurationTarget.Global);
+            return SettingsConfig.setDirectValue(this.schema, settings);
         }
     }
 
-    private async updateFileHistory() {
+    private updateFileHistory(): Thenable<void> {
         // settings are read-only, so make a clone
         const settings: any = { ...vscode.workspace.getConfiguration(this.schema) };
         if (settings.persistence) {
             settings.fileHistory = this.mFileHistory;
-            await vscode.workspace.getConfiguration().update(this.schema, settings, vscode.ConfigurationTarget.Global);
+            return SettingsConfig.setDirectValue(this.schema, settings);
         }
     }
 
-    private async initialize() {
+    private updateDsTemplateHistory(): void {
+        // settings are read-only, so make a clone
+        const settings: any = { ...vscode.workspace.getConfiguration(this.schema) };
+        if (settings.persistence) {
+            settings.templates = this.mDsTemplates;
+            SettingsConfig.setDirectValue(this.schema, settings);
+        }
+    }
+
+    private initialize(): void {
         let searchHistoryLines: string[];
         let sessionLines: string[];
         let fileHistoryLines: string[];
+        let dsTemplateLines: api.DataSetAllocTemplate[];
         if (vscode.workspace.getConfiguration(this.schema)) {
             searchHistoryLines = vscode.workspace.getConfiguration(this.schema).get(PersistentFilters.searchHistory);
             sessionLines = vscode.workspace.getConfiguration(this.schema).get(PersistentFilters.sessions);
             fileHistoryLines = vscode.workspace.getConfiguration(this.schema).get(PersistentFilters.fileHistory);
+            dsTemplateLines = vscode.workspace.getConfiguration(this.schema).get(PersistentFilters.templates);
         }
         if (searchHistoryLines) {
             this.mSearchHistory = searchHistoryLines;
@@ -265,6 +298,11 @@ export class PersistentFilters {
             this.mFileHistory = fileHistoryLines;
         } else {
             this.resetFileHistory();
+        }
+        if (dsTemplateLines) {
+            this.mDsTemplates = dsTemplateLines;
+        } else {
+            this.resetDsTemplateHistory();
         }
     }
 }

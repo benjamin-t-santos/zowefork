@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { imperative } from "@zowe/cli";
@@ -125,6 +125,8 @@ export function newTestSchemas() {
         user: { type: "string", secure: true, optionDefinition: { description: "description" } },
         password: { type: "string", secure: true, optionDefinition: { description: "description" } },
         rejectUnauthorized: { type: "boolean", optionDefinition: { description: "description" } },
+        tokenType: { type: "string" },
+        tokenValue: { type: "string" },
     };
 }
 
@@ -212,8 +214,7 @@ export function createProfileManager() {
                 createProfileExamples: [
                     {
                         options: "zos123 --host zos123 --port 1443 --user ibmuser --password myp4ss",
-                        description:
-                            "Create a zosmf profile called 'zos123' to connect to z/OSMF at host zos123 and port 1443",
+                        description: "Create a zosmf profile called 'zos123' to connect to z/OSMF at host zos123 and port 1443",
                     },
                     {
                         options: "zos124 --host zos124 --user ibmuser --password myp4ss --reject-unauthorized false",

@@ -1,19 +1,19 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
 import { ValidProfileEnum } from "@zowe/zowe-explorer-api";
-import { PersistentFilters } from "../../../src/PersistentFilters";
 import { Profiles } from "../../../src/Profiles";
 import {
+    createGetConfigMock,
     createInstanceOfProfile,
     createIProfile,
     createISessionWithoutCredentials,
@@ -24,6 +24,9 @@ import { createIJobObject, createJobsTree } from "../../../__mocks__/mockCreator
 import * as refreshActions from "../../../src/shared/refresh";
 import { createDatasetSessionNode, createDatasetTree } from "../../../__mocks__/mockCreators/datasets";
 import * as globals from "../../../src/globals";
+import * as sessUtils from "../../../src/utils/SessionUtils";
+import { SettingsConfig } from "../../../src/utils/SettingsConfig";
+import { ZoweLogger } from "../../../src/utils/LoggerUtils";
 
 function createGlobalMocks() {
     const globalMocks = {
@@ -41,6 +44,7 @@ function createGlobalMocks() {
     globalMocks.mockLoadNamedProfile.mockReturnValue(globalMocks.testProfile);
     const profilesForValidation = { status: "active", name: "fake" };
     Object.defineProperty(vscode.window, "createTreeView", { value: globalMocks.createTreeView, configurable: true });
+    Object.defineProperty(ZoweLogger, "trace", { value: jest.fn(), configurable: true });
     Object.defineProperty(Profiles, "getInstance", {
         value: jest.fn(() => {
             return {
@@ -60,6 +64,9 @@ function createGlobalMocks() {
                 }),
                 loadNamedProfile: globalMocks.mockLoadNamedProfile,
                 getDefaultProfile: jest.fn(),
+                fetchAllProfiles: jest.fn(() => {
+                    return [{ name: "sestest" }, { name: "profile1" }, { name: "profile2" }];
+                }),
             };
         }),
     });
@@ -68,16 +75,17 @@ function createGlobalMocks() {
         configurable: true,
     });
 
-    Object.defineProperty(PersistentFilters, "getDirectValue", {
-        value: jest.fn(() => {
-            return {
-                "zowe.automaticProfileValidation": true,
-            };
+    Object.defineProperty(SettingsConfig, "getDirectValue", {
+        value: createGetConfigMock({
+            "zowe.automaticProfileValidation": true,
         }),
     });
-    Object.defineProperty(globals, "LOG", { value: globalMocks.mockLog, configurable: true });
-    Object.defineProperty(globals.LOG, "debug", { value: globalMocks.mockDebug, configurable: true });
-    Object.defineProperty(globals.LOG, "error", { value: globalMocks.mockError, configurable: true });
+    Object.defineProperty(sessUtils, "removeSession", {
+        value: jest.fn().mockImplementationOnce(() => Promise.resolve()),
+        configurable: true,
+    });
+    Object.defineProperty(ZoweLogger, "error", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "debug", { value: jest.fn(), configurable: true });
 
     return globalMocks;
 }
@@ -101,22 +109,19 @@ describe("Refresh Unit Tests - Function refreshAll", () => {
             createTreeView()
         );
         newMocks.testUSSTree.mSessionNodes.push(newMocks.ussNode);
-        newMocks.jobsTree = createJobsTree(
-            globalMocks.session,
-            newMocks.iJob,
-            newMocks.profileInstance,
-            newMocks.treeView
-        );
+        newMocks.jobsTree = createJobsTree(globalMocks.session, newMocks.iJob, newMocks.profileInstance, newMocks.treeView);
         newMocks.jobsTree.mSessionNodes.push(newMocks.datasetSessionNode);
         newMocks.testDatasetTree = createDatasetTree(newMocks.datasetSessionNode, newMocks.treeView);
         newMocks.testDatasetTree.mSessionNodes.push(newMocks.datasetSessionNode);
 
-        Object.defineProperty(PersistentFilters, "getDirectValue", {
-            value: jest.fn(() => {
-                return {
-                    "zowe.automaticProfileValidation": true,
-                };
+        Object.defineProperty(SettingsConfig, "getDirectValue", {
+            value: createGetConfigMock({
+                "zowe.automaticProfileValidation": true,
             }),
+        });
+        Object.defineProperty(sessUtils, "removeSession", {
+            value: jest.fn().mockImplementationOnce(() => Promise.resolve()),
+            configurable: true,
         });
 
         return newMocks;
@@ -131,7 +136,7 @@ describe("Refresh Unit Tests - Function refreshAll", () => {
             return {};
         });
         const spy = jest.spyOn(refreshActions, "refreshAll");
-        refreshActions.refreshAll(blockMocks.testUSSTree);
+        await refreshActions.refreshAll(blockMocks.testUSSTree);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(refreshActions.refreshAll(blockMocks.testUSSTree)).toEqual(response);
         spy.mockClear();
@@ -144,7 +149,7 @@ describe("Refresh Unit Tests - Function refreshAll", () => {
             return {};
         });
         const submitJclSpy = jest.spyOn(refreshActions, "refreshAll");
-        refreshActions.refreshAll(blockMocks.jobsTree);
+        await refreshActions.refreshAll(blockMocks.jobsTree);
         expect(submitJclSpy).toHaveBeenCalledTimes(1);
         expect(refreshActions.refreshAll(blockMocks.jobsTree)).toEqual(response);
         submitJclSpy.mockClear();
@@ -156,7 +161,7 @@ describe("Refresh Unit Tests - Function refreshAll", () => {
             return {};
         });
         const spy = jest.spyOn(refreshActions, "refreshAll");
-        refreshActions.refreshAll(blockMocks.testUSSTree);
+        await refreshActions.refreshAll(blockMocks.testUSSTree);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(refreshActions.refreshAll(blockMocks.testDatasetTree)).toEqual(response);
         spy.mockClear();

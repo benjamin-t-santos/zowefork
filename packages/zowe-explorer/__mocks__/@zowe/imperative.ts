@@ -1,19 +1,108 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 /**
- * This interface defines the options that can be sent into the dwanload data set function
+ * This interface defines the options that can be sent into the download data set function
  */
 
 const log4js = require("log4js");
+
+/**
+ * Constants used for REST client, etc.
+ * @export
+ * @class RestConstants
+ */
+export class RestConstants {
+    /**
+     * 200
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_200 = 200;
+    /**
+     * 201
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_201 = 201;
+    /**
+     * 202
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_202 = 202;
+    /**
+     * 204
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_204 = 204;
+    /**
+     * 300
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_300 = 300;
+    /**
+     * 400
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_400 = 400;
+    /**
+     * 401
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_401 = 401;
+    /**
+     * 404
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_404 = 404;
+    /**
+     * 500
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly HTTP_STATUS_500 = 500;
+    /**
+     * Set cookie property
+     * @static
+     * @type {string}
+     * @memberof RestConstants
+     */
+    static readonly PROP_COOKIE: string;
+    /**
+     * Query identifier
+     * @static
+     * @memberof RestConstants
+     */
+    static readonly QUERY_ID = "?";
+    /**
+     * Basic auth
+     * @static
+     * @type {string}
+     * @memberof RestConstants
+     */
+    static readonly BASIC_PREFIX: string;
+    /**
+     * Bearer auth
+     * @static
+     * @type {string}
+     * @memberof RestConstants
+     */
+    static readonly BEARER_PREFIX: string;
+}
 
 export interface ICliOptions {
     profileRootDirectory: string;
@@ -45,9 +134,15 @@ export interface ICommandArguments {
     tokenValue?: string;
 }
 
+export interface IImperativeError {
+    msg: string;
+    errorCode?: number;
+    additionalDetails?: string;
+}
+
 interface NodeModule {
     exports: any;
-    require: NodeRequireFunction;
+    require: NodeRequire;
     id: string;
     filename: string;
     loaded: boolean;
@@ -66,24 +161,25 @@ export interface IConfigOpts {
     vault?: string;
 }
 
+export interface ICredentialManagerNameMap {
+    credMgrDisplayName: string;
+    credMgrPluginName?: string;
+    credMgrZEName?: string;
+}
+
 export class BrightProfile {
     constructor(public profile: Profile) {}
 }
 
-// tslint:disable-next-line:max-classes-per-file
 export class Session {
     constructor(public ISession: ISessionOptions) {}
 }
 
-// tslint:disable-next-line:class-name
-// tslint:disable-next-line:max-classes-per-file
 export class Profile {
     constructor(public name: string, public type: string) {}
 }
 
-// tslint:disable-next-line:max-classes-per-file
 export class CliProfileManager {
-    // tslint:disable-next-line:no-empty
     constructor(options: ICliOptions) {}
 
     public load(opts: ILoadOptions) {
@@ -140,6 +236,8 @@ export class CliProfileManager {
             },
         ];
     }
+
+    public static initialize() {}
 }
 
 export class ProfileInfo {
@@ -150,7 +248,17 @@ export class ProfileInfo {
     }
 }
 
-// tslint:disable-next-line:max-classes-per-file
+export class ImperativeError extends Error {
+    private msg: string;
+    constructor(public mDetails: IImperativeError) {
+        super();
+        this.msg = mDetails.msg;
+    }
+    public get message() {
+        return this.msg;
+    }
+}
+
 export class ImperativeConfig {
     public static instance = {
         cliHome: "./__tests__/.zowe",
@@ -167,18 +275,70 @@ export class ImperativeConfig {
     public cliHome: "./__tests__/.zowe";
 }
 
-// tslint:disable-next-line:max-classes-per-file
+export class ConfigSchema {
+    public static buildSchema() {
+        return {};
+    }
+}
+
+export class CredentialManagerOverride {
+    public static getKnownCredMgrs(): ICredentialManagerNameMap[] {
+        return [];
+    }
+
+    public static getCredMgrInfoByDisplayName(displayName: string): ICredentialManagerNameMap | null {
+        return null;
+    }
+
+    public static recordCredMgrInConfig(displayName: string): void {
+        return;
+    }
+}
+
+export class ProfileCredentials {
+    public static defaultCredMgrWithKeytar(requireKeytar: () => NodeModule): string {
+        return "Test";
+    }
+}
+
+export class ConfigBuilder {
+    public static build() {
+        return {
+            $schema: "./zowe.schema.json",
+            profiles: {
+                zosmf: {
+                    type: "zosmf",
+                    properties: {
+                        port: 443,
+                    },
+                    secure: [],
+                },
+                base: {
+                    type: "base",
+                    properties: {
+                        host: "sample.com",
+                        rejectUnauthorized: false,
+                    },
+                    secure: [],
+                },
+            },
+            defaults: {
+                zosmf: "zosmf",
+                base: "base",
+            },
+            autoStore: true,
+        };
+    }
+}
+
 export class CredentialManagerFactory {}
 
-// tslint:disable-next-line:max-classes-per-file
 export class DefaultCredentialManager {
     public test: "test";
 }
 
-// tslint:disable-next-line:max-classes-per-file
 export class AbstractCredentialManager {}
 
-// tslint:disable-next-line:max-classes-per-file
 export class Logger {
     public static initLogger(loggingConfig: IConfigLogging): any {}
     public static getAppLogger(): Logger {
@@ -186,12 +346,10 @@ export class Logger {
     }
 }
 
-// tslint:disable-next-line:max-classes-per-file
 export class ConnectionPropsForSessCfg {
     public static resolveSessCfgProps(): void {}
 }
 
-// tslint:disable-next-line:max-classes-per-file
 export class TextUtils {
     public static prettyJson(object: any, options?: any, color?: boolean, append?: string): string {
         return JSON.stringify(object);

@@ -5,8 +5,8 @@
   "author": "Zowe",
   "license": "EPL-2.0",
   "description": "Adds zFTP support to Zowe Explorer demonstrating how to extend the Zowe Explorer using its extensibility API.",
-  "version": "2.5.0-SNAPSHOT",
-  "icon": "resources/zowe_ftp_logo.png",
+  "version": "2.12.0-SNAPSHOT",
+  "icon": "resources/zowe-ftp-color.png",
   "repository": {
     "url": "https://github.com/zowe/vscode-extension-for-zowe"
   },
@@ -30,25 +30,25 @@
     "Zowe.vscode-extension-for-zowe"
   ],
   "scripts": {
-    "prepare": "yarn build",
-    "build": "yarn clean && webpack --mode development",
+    "build": "yarn clean && yarn license && webpack --mode development",
     "test:unit": "jest \".*__tests__.*\\.unit\\.test\\.ts\" --coverage",
     "test": "yarn test:unit",
-    "lint": "concurrently -n \"_eslint_,prettier\" \"eslint . --ext .ts\" \"prettier --check .\"",
+    "lint": "concurrently -n \"_eslint_,prettier\" \"eslint .\" \"prettier --check .\"",
+    "lint:html": "eslint . --format html > results/eslint.html",
     "pretty": "prettier --write .",
     "watch": "webpack --mode development --watch --info-verbosity verbose",
     "clean": "rimraf out",
     "fresh-clone": "yarn clean && rimraf node_modules",
-    "vscode:prepublish": "yarn license && yarn lint && webpack --mode production",
-    "license": "node ../../scripts/license.js",
+    "vscode:prepublish": "webpack --mode production",
+    "license": "node ../../scripts/updateLicenses.js",
     "package": "vsce package --allow-star-activation --yarn && node ../../scripts/mv-pack.js zowe-explorer-ftp-extension vsix"
   },
   "engines": {
     "vscode": "^1.53.2"
   },
   "dependencies": {
-    "@zowe/zowe-explorer-api": "2.5.0-SNAPSHOT",
-    "@zowe/zos-ftp-for-zowe-cli": "2.1.0",
+    "@zowe/zos-ftp-for-zowe-cli": "2.1.2",
+    "@zowe/zowe-explorer-api": "2.12.0-SNAPSHOT",
     "tmp": "0.2.1"
   },
   "devDependencies": {
@@ -59,9 +59,9 @@
   },
   "jest": {
     "moduleFileExtensions": [
+      "js",
       "ts",
-      "tsx",
-      "js"
+      "tsx"
     ],
     "testPathIgnorePatterns": [
       "<rootDir>/src/decorators"
@@ -70,22 +70,32 @@
       "<rootDir>/results/unit"
     ],
     "transform": {
-      "^.+\\.(ts|tsx)$": "ts-jest"
-    },
-    "globals": {
-      "ts-jest": {
-        "tsConfig": "tsconfig.json",
-        "diagnostics": false
-      }
+      "^.+\\.(ts|tsx)$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json",
+          "diagnostics": false
+        }
+      ]
     },
     "testRegex": "__tests__.*\\.(spec|test)\\.ts$",
     "modulePathIgnorePatterns": [
       "out/"
     ],
     "reporters": [
-      "default"
+      "default",
+      "jest-junit",
+      "jest-stare",
+      "jest-html-reporter"
     ],
-    "coverageDirectory": "<rootDir>/results/unit/coverage"
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text",
+      "cobertura"
+    ],
+    "coverageDirectory": "<rootDir>/results/unit/coverage",
+    "preset": "ts-jest"
   },
   "jest-html-reporter": {
     "pageTitle": "Zowe FTP Extension Tests",

@@ -1,20 +1,15 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
-import {
-    getMessageById,
-    getMessageByNode,
-    MessageCategoryId,
-    MessageContentType,
-} from "../../../src/generators/messages";
+import { getMessageById, getMessageByNode, MessageCategoryId, MessageContentType } from "../../../src/generators/messages";
 import { ZoweDatasetNode } from "../../../src/dataset/ZoweDatasetNode";
 import { imperative } from "@zowe/cli";
 import { DatasetTree } from "../../../src/dataset/DatasetTree";
@@ -47,15 +42,7 @@ describe("Checking message generator's basics", () => {
             message: "",
             failNotFound: false,
         };
-        return new ZoweDatasetNode(
-            "session",
-            vscode.TreeItemCollapsibleState.Collapsed,
-            null,
-            session,
-            undefined,
-            undefined,
-            profile
-        );
+        return new ZoweDatasetNode("session", vscode.TreeItemCollapsibleState.Collapsed, null, session, undefined, undefined, profile);
     };
     const generateTestDatasetMemberNode = (session: ZoweDatasetNode) => {
         const parent = new ZoweDatasetNode(
@@ -85,7 +72,7 @@ describe("Checking message generator's basics", () => {
         const resultMessage = getMessageById(targetId, MessageContentType.upload);
 
         expect(resultMessage).not.toBeNull();
-        expect(resultMessage).toBe("Saving dataset...");
+        expect(resultMessage).toBe("Saving data set...");
     });
     it("Testing that you can't get Message with not existing ID", () => {
         const targetId = "some-not-existing-id";
@@ -98,7 +85,7 @@ describe("Checking message generator's basics", () => {
         const resultMessage = getMessageByNode(sessionNode, MessageContentType.upload);
 
         expect(resultMessage).not.toBeNull();
-        expect(resultMessage).toBe("Saving dataset...");
+        expect(resultMessage).toBe("Saving data set...");
     });
     it("Testing that you can correctly get Specific Message By Node", () => {
         const sessionNode = generateTestSessionNode();
@@ -106,7 +93,7 @@ describe("Checking message generator's basics", () => {
         const resultMessage = getMessageByNode(memberNode, MessageContentType.upload);
 
         expect(resultMessage).not.toBeNull();
-        expect(resultMessage).toBe("Saving dataset member...");
+        expect(resultMessage).toBe("Saving data set member...");
     });
     it("Testing that you can't get Specific Message using incorrect Node", () => {
         const randomNode = {};

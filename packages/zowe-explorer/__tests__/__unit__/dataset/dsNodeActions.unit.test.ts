@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
@@ -16,6 +16,7 @@ import * as dsNodeActions from "../../../src/dataset/actions";
 import * as refreshActions from "../../../src/shared/refresh";
 import { Profiles } from "../../../src/Profiles";
 import { FAVORITE_CONTEXT, DS_SESSION_CONTEXT, FAV_SUFFIX } from "../../../src/globals";
+import { ZoweLogger } from "../../../src/utils/LoggerUtils";
 
 jest.mock("vscode");
 jest.mock("Session");
@@ -61,47 +62,19 @@ const profileOne: imperative.IProfileLoaded = {
 getConfiguration.mockReturnValue({
     persistence: true,
     get: (setting: string) => ["[test]: /u{session}"],
-    // tslint:disable-next-line: no-empty
-    update: jest.fn(() => {
-        {
-        }
-    }),
+    update: jest.fn(),
 });
 
 function getDSNode() {
-    const mParent = new ZoweDatasetNode(
-        "parentNode",
-        vscode.TreeItemCollapsibleState.Expanded,
-        null,
-        session,
-        undefined,
-        undefined,
-        profileOne
-    );
-    const dsNode = new ZoweDatasetNode(
-        "sestest",
-        vscode.TreeItemCollapsibleState.Expanded,
-        mParent,
-        session,
-        undefined,
-        undefined,
-        profileOne
-    );
+    const mParent = new ZoweDatasetNode("parentNode", vscode.TreeItemCollapsibleState.Expanded, null, session, undefined, undefined, profileOne);
+    const dsNode = new ZoweDatasetNode("sestest", vscode.TreeItemCollapsibleState.Expanded, mParent, session, undefined, undefined, profileOne);
     dsNode.contextValue = DS_SESSION_CONTEXT;
     dsNode.pattern = "test hlq";
     return dsNode;
 }
 
 function getFavoriteDSNode() {
-    const mParent = new ZoweDatasetNode(
-        "Favorites",
-        vscode.TreeItemCollapsibleState.Expanded,
-        null,
-        session,
-        undefined,
-        undefined,
-        profileOne
-    );
+    const mParent = new ZoweDatasetNode("Favorites", vscode.TreeItemCollapsibleState.Expanded, null, session, undefined, undefined, profileOne);
     const dsNodeF = new ZoweDatasetNode(
         "[sestest]: sestest",
         vscode.TreeItemCollapsibleState.Expanded,
@@ -194,6 +167,7 @@ describe("dsNodeActions", () => {
     Object.defineProperty(vscode.workspace, "getConfiguration", { value: getConfiguration });
     Object.defineProperty(ZosmfSession, "createSessCfgFromArgs", { value: createSessCfgFromArgs });
     Object.defineProperty(refreshActions, "refreshAll", { value: jest.fn() });
+    Object.defineProperty(ZoweLogger, "trace", { value: jest.fn(), configurable: true });
 
     beforeEach(() => {
         showErrorMessage.mockReset();
@@ -235,7 +209,7 @@ describe("dsNodeActions", () => {
                 }),
             });
             const spy = jest.spyOn(refreshActions, "refreshAll");
-            refreshActions.refreshAll(testDSTree);
+            await refreshActions.refreshAll(testDSTree);
             expect(spy).toHaveBeenCalledTimes(1);
         });
     });

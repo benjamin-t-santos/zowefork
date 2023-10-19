@@ -1,22 +1,23 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import * as globals from "../globals";
-import * as vscode from "vscode";
 import { moveSync } from "fs-extra";
 import * as nls from "vscode-nls";
 import { errorHandling } from "../utils/ProfilesUtils";
-import { PersistentFilters } from "../PersistentFilters";
+import { SettingsConfig } from "./SettingsConfig";
+import { Gui } from "@zowe/zowe-explorer-api";
+import { ZoweLogger } from "./LoggerUtils";
 
 // Set up localization
 nls.config({
@@ -30,7 +31,8 @@ const localize: nls.LocalizeFunc = nls.loadMessageBundle();
 //  * @param previousTempPath temp path settings value before updated by user
 //  * @param currentTempPath temp path settings value after updated by user
 //  */
-export async function moveTempFolder(previousTempPath: string, currentTempPath: string) {
+export async function moveTempFolder(previousTempPath: string, currentTempPath: string): Promise<void> {
+    ZoweLogger.trace("TempFolder.moveTempFolder called.");
     // Re-define globals with updated path
     globals.defineGlobals(currentTempPath);
 
@@ -39,7 +41,7 @@ export async function moveTempFolder(previousTempPath: string, currentTempPath: 
     }
 
     // Make certain that "temp" folder is cleared
-    cleanTempDir();
+    await cleanTempDir();
 
     try {
         fs.mkdirSync(globals.ZOWETEMPFOLDER);
@@ -47,14 +49,9 @@ export async function moveTempFolder(previousTempPath: string, currentTempPath: 
         fs.mkdirSync(globals.USS_DIR);
         fs.mkdirSync(globals.DS_DIR);
     } catch (err) {
-        globals.LOG.error(
-            localize("moveTempFolder.error", "Error encountered when creating temporary folder! ") + JSON.stringify(err)
-        );
-        await errorHandling(
-            err,
-            null,
-            localize("moveTempFolder.error", "Error encountered when creating temporary folder! ") + err.message
-        );
+        if (err instanceof Error) {
+            await errorHandling(err, null, localize("moveTempFolder.error", "Error encountered when creating temporary folder!"));
+        }
     }
     const previousTemp = path.join(previousTempPath, "temp");
     try {
@@ -73,8 +70,10 @@ export async function moveTempFolder(previousTempPath: string, currentTempPath: 
 
         moveSync(previousTemp, globals.ZOWETEMPFOLDER, { overwrite: true });
     } catch (err) {
-        globals.LOG.error("Error moving temporary folder! " + JSON.stringify(err));
-        vscode.window.showErrorMessage(err.message);
+        ZoweLogger.error("Error moving temporary folder! " + JSON.stringify(err));
+        if (err instanceof Error) {
+            Gui.errorMessage(err.message);
+        }
     }
 }
 
@@ -83,7 +82,8 @@ export async function moveTempFolder(previousTempPath: string, currentTempPath: 
  *
  * @param directory path to directory to be deleted
  */
-export async function cleanDir(directory) {
+export function cleanDir(directory: string): void {
+    ZoweLogger.trace("TempFolder.cleanDir called.");
     if (!fs.existsSync(directory)) {
         return;
     }
@@ -104,19 +104,21 @@ export async function cleanDir(directory) {
  *
  * @export
  */
-export async function cleanTempDir() {
+export function cleanTempDir(): Promise<void> {
+    ZoweLogger.trace("TempFolder.cleanTempDir called.");
     // Get temp folder cleanup preference from settings
-    const preferencesTempCleanupEnabled = PersistentFilters.getDirectValue(
-        globals.SETTINGS_TEMP_FOLDER_CLEANUP
-    ) as boolean;
+    const preferencesTempCleanupEnabled: boolean = SettingsConfig.getDirectValue(globals.SETTINGS_TEMP_FOLDER_CLEANUP);
     // logger hasn't necessarily been initialized yet, don't use the `log` in this function
     if (!fs.existsSync(globals.ZOWETEMPFOLDER) || !preferencesTempCleanupEnabled) {
         return;
     }
     try {
-        await cleanDir(globals.ZOWETEMPFOLDER);
+        cleanDir(globals.ZOWETEMPFOLDER);
     } catch (err) {
-        vscode.window.showErrorMessage(localize("deactivate.error", "Unable to delete temporary folder. ") + err);
+        ZoweLogger.error(err);
+        if (err instanceof Error) {
+            Gui.errorMessage(`${localize("deactivate.error", "Unable to delete temporary folder. ")}${err.message}`);
+        }
     }
 }
 
@@ -125,10 +127,9 @@ export async function cleanTempDir() {
  *
  * @export
  */
-export async function hideTempFolder(zoweDir: string) {
-    if (PersistentFilters.getDirectValue(globals.SETTINGS_TEMP_FOLDER_HIDE) as boolean) {
-        vscode.workspace
-            .getConfiguration("files")
-            .update("exclude", { [zoweDir]: true, [globals.ZOWETEMPFOLDER]: true }, vscode.ConfigurationTarget.Global);
+export async function hideTempFolder(zoweDir: string): Promise<void> {
+    ZoweLogger.trace("TempFolder.hideTempFolder called.");
+    if (SettingsConfig.getDirectValue<boolean>(globals.SETTINGS_TEMP_FOLDER_HIDE)) {
+        await SettingsConfig.setDirectValue("files.exclude", { [zoweDir]: true, [globals.ZOWETEMPFOLDER]: true });
     }
 }

@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { ZoweDatasetNode } from "../../src/dataset/ZoweDatasetNode";
@@ -17,15 +17,7 @@ import { removeNodeFromArray } from "./shared";
 import { PersistenceSchemaEnum } from "@zowe/zowe-explorer-api";
 
 export function createDatasetSessionNode(session: imperative.Session, profile: imperative.IProfileLoaded) {
-    const datasetNode = new ZoweDatasetNode(
-        "sestest",
-        vscode.TreeItemCollapsibleState.Expanded,
-        null,
-        session,
-        undefined,
-        undefined,
-        profile
-    );
+    const datasetNode = new ZoweDatasetNode("sestest", vscode.TreeItemCollapsibleState.Expanded, null, session, undefined, undefined, profile);
     datasetNode.contextValue = globals.DS_SESSION_CONTEXT;
 
     return datasetNode;
@@ -74,9 +66,12 @@ export function createDatasetTree(sessionNode: ZoweDatasetNode, treeView: any, f
         renameNode: jest.fn(),
         findFavoritedNode: jest.fn(),
         findNonFavoritedNode: jest.fn(),
+        findEquivalentNode: jest.fn(),
         getProfileName: jest.fn(),
         getSession: jest.fn(),
         getProfiles: jest.fn(),
+        getDsTemplates: jest.fn(),
+        addDsTemplate: jest.fn(),
     };
     testDatasetTree.addFavorite.mockImplementation((newFavorite) => testDatasetTree.mFavorites.push(newFavorite));
     testDatasetTree.addFileHistory.mockImplementation((newFile) => testDatasetTree.mFileHistory.push(newFile));
@@ -84,12 +79,8 @@ export function createDatasetTree(sessionNode: ZoweDatasetNode, treeView: any, f
         testDatasetTree.mFileHistory.splice(testDatasetTree.mFileHistory.indexOf(badFile), 1)
     );
     testDatasetTree.getFileHistory.mockImplementation(() => testDatasetTree.mFileHistory);
-    testDatasetTree.deleteSession.mockImplementation((badSession) =>
-        removeNodeFromArray(badSession, testDatasetTree.mSessionNodes)
-    );
-    testDatasetTree.removeFavorite.mockImplementation((badFavorite) =>
-        removeNodeFromArray(badFavorite, testDatasetTree.mFavorites)
-    );
+    testDatasetTree.deleteSession.mockImplementation((badSession) => removeNodeFromArray(badSession, testDatasetTree.mSessionNodes));
+    testDatasetTree.removeFavorite.mockImplementation((badFavorite) => removeNodeFromArray(badFavorite, testDatasetTree.mFavorites));
     testDatasetTree.removeFavProfile.mockImplementation((badFavProfileName) => {
         const badFavProfileNode = testDatasetTree.mFavorites.find((treeNode) => treeNode.label === badFavProfileName);
         removeNodeFromArray(badFavProfileNode, testDatasetTree.mFavorites);
@@ -123,5 +114,22 @@ export function createDatasetAttributes(label: string, context: string) {
         used: "6",
         vol: "3BP001",
         vols: "3BP001",
+    };
+}
+
+export function createDSMemberAttributes(label: string) {
+    return {
+        member: label,
+        vers: 1,
+        mod: 0,
+        c4date: "2019/05/08",
+        m4date: "2020/05/08",
+        cnorc: 11,
+        inorc: 11,
+        mnorc: 0,
+        mtime: "08:54",
+        msec: "41",
+        user: ">7CHARS",
+        sclm: "N",
     };
 }

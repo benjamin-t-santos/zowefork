@@ -1,15 +1,14 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
-// tslint:disable:no-magic-numbers
 import { imperative, ZosmfSession } from "@zowe/cli";
 import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
@@ -22,10 +21,9 @@ import { Job } from "../../../src/job/ZoweJobNode";
 import * as globals from "../../../src/globals";
 import { DatasetTree } from "../../../src/dataset/DatasetTree";
 import { ZoweDatasetNode } from "../../../src/dataset/ZoweDatasetNode";
-import { createInstanceOfProfile } from "../../../__mocks__/mockCreators/shared";
 
 const TIMEOUT = 45000;
-declare var it: Mocha.ITestDefinition;
+declare let it: Mocha.TestFunction;
 
 describe("jobNodeActions integration test", async () => {
     const expect = chai.expect;
@@ -53,14 +51,7 @@ describe("jobNodeActions integration test", async () => {
     };
 
     // Test Jobs session node & tree
-    const jobSessionNode = new Job(
-        testConst.profile.name,
-        vscode.TreeItemCollapsibleState.Collapsed,
-        null,
-        session,
-        null,
-        null
-    );
+    const jobSessionNode = new Job(testConst.profile.name, vscode.TreeItemCollapsibleState.Collapsed, null, session, null, null);
     jobSessionNode.contextValue = globals.JOBS_SESSION_CONTEXT;
     const testJobsTree = new ZosJobsProvider();
     testJobsTree.mSessionNodes.push(jobSessionNode);
@@ -96,9 +87,7 @@ describe("jobNodeActions integration test", async () => {
     const oldSettings = vscode.workspace.getConfiguration(globals.SETTINGS_DS_HISTORY);
 
     after(async () => {
-        await vscode.workspace
-            .getConfiguration()
-            .update(globals.SETTINGS_DS_HISTORY, oldSettings, vscode.ConfigurationTarget.Global);
+        await vscode.workspace.getConfiguration().update(globals.SETTINGS_DS_HISTORY, oldSettings, vscode.ConfigurationTarget.Global);
     });
 
     describe("refreshAll", async () => {

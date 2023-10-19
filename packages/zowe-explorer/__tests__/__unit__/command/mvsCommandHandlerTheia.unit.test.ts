@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
@@ -17,6 +17,7 @@ import * as globals from "../../../src/globals";
 import * as utils from "../../../src/utils/ProfilesUtils";
 import { imperative } from "@zowe/cli";
 import { ZoweExplorerApiRegister } from "../../../src/ZoweExplorerApiRegister";
+import { ZoweLogger } from "../../../src/utils/LoggerUtils";
 
 describe("mvsCommandActions unit testing", () => {
     const showErrorMessage = jest.fn();
@@ -41,6 +42,8 @@ describe("mvsCommandActions unit testing", () => {
     const qpItem: vscode.QuickPickItem = new utils.FilterDescriptor("\uFF0B " + "Create a new filter");
 
     const mockLoadNamedProfile = jest.fn();
+    Object.defineProperty(globals, "LOG", { value: jest.fn(), configurable: true });
+    Object.defineProperty(globals.LOG, "error", { value: jest.fn(), configurable: true });
     Object.defineProperty(profileLoader.Profiles, "createInstance", {
         value: jest.fn(() => {
             return {
@@ -49,6 +52,8 @@ describe("mvsCommandActions unit testing", () => {
             };
         }),
     });
+    Object.defineProperty(ZoweLogger, "error", { value: jest.fn(), configurable: true });
+    Object.defineProperty(ZoweLogger, "trace", { value: jest.fn(), configurable: true });
 
     const ProgressLocation = jest.fn().mockImplementation(() => {
         return {
@@ -91,7 +96,7 @@ describe("mvsCommandActions unit testing", () => {
     Object.defineProperty(vscode.window, "withProgress", { value: withProgress });
 
     getConfiguration.mockReturnValue({
-        get: (setting: string) => undefined,
+        get: (_setting: string) => undefined,
         update: jest.fn(() => {
             return {};
         }),
@@ -112,10 +117,7 @@ describe("mvsCommandActions unit testing", () => {
         Object.defineProperty(profileLoader.Profiles, "getInstance", {
             value: jest.fn(() => {
                 return {
-                    allProfiles: [
-                        { name: "firstName", profile: { user: "firstName", password: "12345" } },
-                        { name: "secondName" },
-                    ],
+                    allProfiles: [{ name: "firstName", profile: { user: "firstName", password: "12345" } }, { name: "secondName" }],
                     defaultProfile: { name: "firstName" },
                     zosmfProfile: mockLoadNamedProfile,
                     checkCurrentProfile: jest.fn(() => {

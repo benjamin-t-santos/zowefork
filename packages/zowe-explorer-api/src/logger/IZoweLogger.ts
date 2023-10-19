@@ -1,26 +1,48 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as loggerConfig from "../log4jsconfig.json";
 import * as path from "path";
 import { imperative } from "@zowe/cli";
 
-export enum MessageSeverityEnum {
-    TRACE = 0,
-    DEBUG = 1,
-    INFO = 2,
-    WARN = 3,
-    ERROR = 4,
-    FATAL = 5,
+type Appender = {
+    type: string;
+    layout: {
+        type: string;
+        pattern: string;
+    };
+    filename: string;
+};
+
+type Log4JsCfg = {
+    log4jsConfig: {
+        appenders: { [key: string]: Appender };
+    };
+};
+
+const LOGGER_CONFIG: Log4JsCfg = loggerConfig;
+
+export enum MessageSeverity {
+    TRACE,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL,
 }
+
+/**
+ * @deprecated Please use `MessageSeverity` instead
+ */
+export type MessageSeverityEnum = MessageSeverity;
 
 /**
  * Creates an instance of the Imperative logger for extenders to use
@@ -30,16 +52,15 @@ export enum MessageSeverityEnum {
  */
 export class IZoweLogger {
     private log: imperative.Logger;
-    private extensionName: string;
+
     /**
      * Creates an instance of the Imperative logger
-     *
      */
-    public constructor(extensionName: string, loggingPath: string) {
+    public constructor(private extensionName: string, loggingPath: string) {
         for (const appenderName of Object.keys(loggerConfig.log4jsConfig.appenders)) {
-            loggerConfig.log4jsConfig.appenders[appenderName].filename = path.join(
+            LOGGER_CONFIG.log4jsConfig.appenders[appenderName].filename = path.join(
                 loggingPath,
-                loggerConfig.log4jsConfig.appenders[appenderName].filename
+                LOGGER_CONFIG.log4jsConfig.appenders[appenderName].filename
             );
         }
         imperative.Logger.initLogger(loggerConfig);
@@ -56,30 +77,12 @@ export class IZoweLogger {
     }
 
     /**
-     * Log an error to the Imperative log
-     *
+     * Log an error message to the Imperative logger.
+     * Default severity is DEBUG if not specified.
      */
-    public logImperativeMessage(message: string, severity: MessageSeverityEnum): void {
-        const messageWithExtensionName = `message from extension ${this.extensionName}: ${message}`;
-        switch (severity) {
-            case MessageSeverityEnum.TRACE:
-                this.log.trace(`TRACE ${messageWithExtensionName}`);
-                break;
-            case MessageSeverityEnum.DEBUG:
-                this.log.debug(`DEBUG ${messageWithExtensionName}`);
-                break;
-            case MessageSeverityEnum.INFO:
-                this.log.debug(`INFO ${messageWithExtensionName}`);
-                break;
-            case MessageSeverityEnum.WARN:
-                this.log.debug(`WARNING ${messageWithExtensionName}`);
-                break;
-            case MessageSeverityEnum.ERROR:
-                this.log.debug(`ERROR ${messageWithExtensionName}`);
-                break;
-            case MessageSeverityEnum.FATAL:
-                this.log.debug(`FATAL ERROR ${messageWithExtensionName}`);
-                break;
-        }
+    public logImperativeMessage(message: string, severity?: MessageSeverity): void {
+        const messageWithExtensionName = `[${this.extensionName}] ${message}`;
+        const severityName = MessageSeverity[severity ?? MessageSeverity.DEBUG];
+        this.log[severityName.toLowerCase()](messageWithExtensionName);
     }
 }

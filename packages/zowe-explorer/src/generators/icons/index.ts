@@ -1,12 +1,12 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import { TreeItem } from "vscode";
@@ -31,6 +31,7 @@ export enum IconId {
     "folder" = "folder",
     "folderOpen" = "folderOpen",
     "migrated" = "migrated",
+    "fileError" = "fileError",
     "vsam" = "vsam",
     "home" = "home",
 }
@@ -63,17 +64,19 @@ const items = [
     require("./items/folder"),
     require("./items/folderOpen"),
     require("./items/migrated"),
+    require("./items/fileError"),
     require("./items/vsam"),
     require("./items/home"),
     require("./items/filterFolder"),
     require("./items/filterFolderOpen"),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
 ].map((item) => item.default) as IIconItem[];
 
 export function getIconById(id: IconId): IIconItem {
     return items.find((item) => item.id === id);
 }
 
-export function getIconByNode(node: CombinedNode) {
+export function getIconByNode(node: CombinedNode): IIconItem {
     const targetItems = items.filter((item) => item.check(node));
 
     if (targetItems.some((item) => item.type === IconHierarchyType.derived)) {

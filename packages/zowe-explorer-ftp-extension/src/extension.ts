@@ -1,17 +1,17 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as vscode from "vscode";
 import * as path from "path";
-import { IZoweLogger, MessageSeverityEnum, ZoweVsCodeExtension } from "@zowe/zowe-explorer-api";
+import { Gui, IZoweLogger, MessageSeverity, ZoweVsCodeExtension } from "@zowe/zowe-explorer-api";
 import { FtpUssApi } from "./ZoweExplorerFtpUssApi";
 import { FtpMvsApi } from "./ZoweExplorerFtpMvsApi";
 import { FtpJesApi } from "./ZoweExplorerFtpJesApi";
@@ -19,14 +19,13 @@ import { CoreUtils } from "@zowe/zos-ftp-for-zowe-cli";
 import { imperative } from "@zowe/cli";
 import { FtpSession } from "./ftpSession";
 
-export const ZoweLogger = new IZoweLogger("Zowe Explorer FTP Extension", path.join(__dirname, "..", ".."));
+export const ZoweLogger = new IZoweLogger("Zowe Explorer FTP Extension", ZoweVsCodeExtension.customLoggingPath ?? path.join(__dirname, "..", ".."));
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(_context: vscode.ExtensionContext): void {
     void registerFtpApis();
 }
 
-export function deactivate(context: vscode.ExtensionContext): void {
+export function deactivate(_context: vscode.ExtensionContext): void {
     sessionMap.forEach((session) => session.releaseConnections());
     sessionMap.clear();
 }
@@ -47,19 +46,14 @@ async function registerFtpApis(): Promise<boolean> {
         await zoweExplorerApi.getExplorerExtenderApi().initForZowe("zftp", meta);
         await zoweExplorerApi.getExplorerExtenderApi().reloadProfiles("zftp");
 
-        ZoweVsCodeExtension.showVsCodeMessage(
-            "Zowe Explorer was modified for FTP support.",
-            MessageSeverityEnum.INFO,
-            ZoweLogger
-        );
+        await Gui.showMessage("Zowe Explorer was modified for FTP support.", { logger: ZoweLogger });
 
         return true;
     }
-    ZoweVsCodeExtension.showVsCodeMessage(
-        "Zowe Explorer was not found: either it is not installed or you are using an older version without extensibility API.",
-        MessageSeverityEnum.FATAL,
-        ZoweLogger
-    );
+    await Gui.showMessage("Zowe Explorer was not found: either it is not installed or you are using an older version without extensibility API.", {
+        severity: MessageSeverity.FATAL,
+        logger: ZoweLogger,
+    });
     return false;
 }
 

@@ -1,4 +1,97 @@
-All notable changes to the "vscode-extension-for-zowe" extension will be documented in this file.
+All notable changes to the "zowe-explorer-ftp-extension" extension will be documented in this file.
+
+## TBD Release
+
+### New features and enhancements
+
+### Bug fixes
+
+- Fixed ECONNRESET error when trying to upload or create an empty data set member. [#2350](https://github.com/zowe/vscode-extension-for-zowe/issues/2350)
+
+## `2.11.0`
+
+### Bug fixes
+
+- Bump `@zowe/zowe-explorer-api` to pick up latest, including `@zowe/secrets-for-zowe-sdk` 7.18.4 to handle install errors gracefully and to allow running without MSVC redistributables.
+
+## `2.10.0`
+
+### New features and enhancements
+
+- Enhance throw error in zowe ftp extension. [#2143](https://github.com/zowe/vscode-extension-for-zowe/issues/2143)
+- Removed `keytar` from list of external Webpack modules. Its usage has been replaced with the `keyring` module from [`@zowe/secrets-for-zowe-sdk`](https://github.com/zowe/zowe-cli/tree/master/packages/secrets). [#2358](https://github.com/zowe/vscode-extension-for-zowe/issues/2358) [#2348](https://github.com/zowe/vscode-extension-for-zowe/issues/2348)
+
+### Bug fixes
+
+- Added missing `owner` and `group` attributes for the returned FTP response in `FtpUssApi.fileList`. [#2254](https://github.com/zowe/vscode-extension-for-zowe/issues/2254)
+
+## `2.9.2`
+
+### New features and enhancements
+
+### Bug fixes
+
+## `2.9.1`
+
+### Bug fixes
+
+- Updated dependencies for security audits.
+
+## `2.9.0`
+
+### Bug fixes
+
+- Fixed an issue with mismatch etag, correcting error message sent to Zowe Explorer to trigger diff editor. [#2277](https://github.com/zowe/vscode-extension-for-zowe/issues/2277)
+- Renamed instances of "dataset" to "data set" for consistency across Zowe Explorer.
+- Fixed an issue with prompting for credentials by correcting the 401 error when throwing an auth error. [#2334](https://github.com/zowe/vscode-extension-for-zowe/issues/2334)
+
+## `2.8.1`
+
+### Bug fixes
+
+- Updated dependencies for security audits.
+
+## `2.8.0`
+
+### New features and enhancements
+
+- Updated linter rules and addressed linter errors. [#2184](https://github.com/zowe/vscode-extension-for-zowe/issues/2184)
+- Added support for new setting `zowe.files.logsFolder.path` that can be used to override Zowe Explorer logs folder. [#2186](https://github.com/zowe/vscode-extension-for-zowe/issues/2186)
+
+## `2.7.0`
+
+### New features and enhancements
+
+- Updated the extension to use Zowe Explorer API's newer API for uploading content to USS for compatibility with the optimizations to copy/paste actions.
+
+## `2.6.2`
+
+### Bug fixes
+
+- Updated dependencies for security audits.
+
+## `2.6.0`
+
+### New features and enhancements
+
+- Updated UI/UX method calls to use standalone `Gui` module for better usability and maintainability. [#1967](https://github.com/zowe/vscode-extension-for-zowe/issues/1967)
+- Updated dependencies for improved security.
+
+### Bug fixes
+
+- Removed TSLint (as it is deprecated), and replaced all TSLint rules with their ESLint equivalents. [#2030](https://github.com/zowe/vscode-extension-for-zowe/issues/2030)
+- Removed extra files from the VSIX bundle to reduce download size by 12%. [#2042](https://github.com/zowe/vscode-extension-for-zowe/pull/2042)
+
+## `2.5.0`
+
+### Bug fixes
+
+- Added logging in places where errors were being caught and ignored.
+- Fixed all existing ESLint errors within the API logic.
+
+## `2.4.1`
+
+- Updated dependencies for improved security.
 
 ## `2.4.0`
 

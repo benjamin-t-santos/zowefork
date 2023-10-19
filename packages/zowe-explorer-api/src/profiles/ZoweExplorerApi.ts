@@ -1,16 +1,18 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
 import * as zowe from "@zowe/cli";
-import { ProfilesCache } from "./ProfilesCache";
+import * as vscode from "vscode";
+import { EventTypes, ProfilesCache } from "./ProfilesCache";
+import { FileAttributes } from "../utils/files";
 
 /**
  * This namespace provides interfaces for all the external APIs provided by this VS Code Extension.
@@ -107,6 +109,14 @@ export namespace ZoweExplorerApi {
          * @returns {Promise<boolean>}
          */
         isFileTagBinOrAscii(ussFilePath: string): Promise<boolean>;
+        /**
+         * Copy operation for USS files or directories.
+         *
+         * @param {string} outputPath the output/destination path for the file/directory
+         * @param {object} options Other options for the API endpoint
+         * @returns {Promise<Buffer>}
+         */
+        copy?(outputPath: string, options?: Omit<object, "request">): Promise<Buffer>;
 
         /**
          * Retrieve the contents of a USS file.
@@ -147,12 +157,15 @@ export namespace ZoweExplorerApi {
          * @param {zowe.IUploadOptions} [options]
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
-        putContent?(
-            inputFilePath: string,
-            ussFilePath: string,
-            options?: zowe.IUploadOptions
-        ): Promise<zowe.IZosFilesResponse>;
+        putContent?(inputFilePath: string, ussFilePath: string, options?: zowe.IUploadOptions): Promise<zowe.IZosFilesResponse>;
 
+        /**
+         * Updates attributes for a USS directory or file.
+         *
+         * @param ussPath The USS path of the directory or file to update
+         * @param attributes The attributes that should be updated
+         */
+        updateAttributes?(ussPath: string, attributes: Partial<FileAttributes>): Promise<zowe.IZosFilesResponse>;
         /**
          * Uploads directory at the given path.
          *
@@ -161,11 +174,7 @@ export namespace ZoweExplorerApi {
          * @param {IUploadOptions} [options]
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
-        uploadDirectory(
-            inputDirectoryPath: string,
-            ussDirectoryPath: string,
-            options: zowe.IUploadOptions
-        ): Promise<zowe.IZosFilesResponse>;
+        uploadDirectory(inputDirectoryPath: string, ussDirectoryPath: string, options: zowe.IUploadOptions): Promise<zowe.IZosFilesResponse>;
 
         /**
          * Create a new directory or file in the specified path.
@@ -196,6 +205,14 @@ export namespace ZoweExplorerApi {
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
         rename(currentUssPath: string, newUssPath: string): Promise<zowe.IZosFilesResponse>;
+
+        /**
+         * Get the tag of a USS file
+         *
+         * @param {string} currentUssPath
+         * @returns {Promise<zowe.IZosFilesResponse>}
+         */
+        getTag?(ussPath: string): Promise<string>;
     }
 
     /**
@@ -238,11 +255,7 @@ export namespace ZoweExplorerApi {
          * @param {zowe.IUploadOptions} [options]
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
-        putContents(
-            inputFilePath: string,
-            dataSetName: string,
-            options?: zowe.IUploadOptions
-        ): Promise<zowe.IZosFilesResponse>;
+        putContents(inputFilePath: string, dataSetName: string, options?: zowe.IUploadOptions): Promise<zowe.IZosFilesResponse>;
 
         /**
          * Create a new data set with the specified options.
@@ -286,7 +299,11 @@ export namespace ZoweExplorerApi {
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
         copyDataSetMember(
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore: Renamed variable is not unused
             { dsn: fromDataSetName, member: fromMemberName }: zowe.IDataSet,
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore: Renamed variable is not unused
             { dsn: toDataSetName, member: toMemberName }: zowe.IDataSet,
             options?: { replace?: boolean }
         ): Promise<zowe.IZosFilesResponse>;
@@ -308,11 +325,7 @@ export namespace ZoweExplorerApi {
          * @param {string} newMemberName
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
-        renameDataSetMember(
-            dataSetName: string,
-            currentMemberName: string,
-            newMemberName: string
-        ): Promise<zowe.IZosFilesResponse>;
+        renameDataSetMember(dataSetName: string, currentMemberName: string, newMemberName: string): Promise<zowe.IZosFilesResponse>;
 
         /**
          * Migrates a data set.
@@ -338,6 +351,26 @@ export namespace ZoweExplorerApi {
          * @returns {Promise<zowe.IZosFilesResponse>}
          */
         deleteDataSet(dataSetName: string, options?: zowe.IDeleteDatasetOptions): Promise<zowe.IZosFilesResponse>;
+
+        /**
+         * Get a list of data sets that match the filter pattern.
+         *
+         * @param {string} filter
+         * @param {zowe.IDsmListOptions} [options]
+         * @returns {Promise<zowe.IZosFilesResponse>}
+         */
+        dataSetsMatchingPattern?(filter: string[], options?: zowe.IDsmListOptions): Promise<zowe.IZosFilesResponse>;
+
+        /**
+         * Copies a dataSet.
+         *
+         * @param {string} fromDataSetName
+         * @param {string} toDataSetName
+         * @param {string?} enq possible values : {SHR, SHRW, EXCLU}
+         * @param {boolean?} replace
+         * @returns {Promise<zowe.IZosFilesResponse>}
+         */
+        copyDataSet?(fromDataSetName: string, toDataSetName: string, enq?: string, replace?: boolean): Promise<zowe.IZosFilesResponse>;
     }
 
     /**
@@ -346,8 +379,17 @@ export namespace ZoweExplorerApi {
      */
     export interface IJes extends ICommon {
         /**
+         * Returns a list of jobs for any parameters.
+         *
+         * @param {string} owner
+         * @returns {Promise<zowe.IJob[]>} an array if IJob
+         */
+        getJobsByParameters?(params: zowe.IGetJobsParms): Promise<zowe.IJob[]>;
+
+        /**
          * Returns a list of jobs for a specific user and prefix.
          *
+         * @deprecated Use getJobsByParameters
          * @param {string} owner
          * @param {string} prefix
          * @returns {Promise<zowe.IJob[]>} an array if IJob
@@ -372,13 +414,22 @@ export namespace ZoweExplorerApi {
         getSpoolFiles(jobname: string, jobid: string): Promise<zowe.IJobFile[]>;
 
         /**
-         * Retrieves spool file content as specified in the parms
+         * Retrieves content for all spool files as specified in the parms
          * to be store in a file.
          *
          * @param {zowe.IDownloadAllSpoolContentParms} parms
          * @returns {Promise<void>}
          */
         downloadSpoolContent(parms: zowe.IDownloadAllSpoolContentParms): Promise<void>;
+
+        /**
+         * Retrieves a single spool file content as specified in the parms
+         * to be store in a file.
+         *
+         * @param {zowe.IDownloadSpoolContentParms} parms
+         * @returns {Promise<void>}
+         */
+        downloadSingleSpool?(parms: zowe.IDownloadSpoolContentParms): Promise<void>;
 
         /**
          * Returns spool file content as a string.
@@ -416,6 +467,15 @@ export namespace ZoweExplorerApi {
          * @memberof IJes
          */
         submitJob(jobDataSet: string): Promise<zowe.IJob>;
+
+        /**
+         * Cancels the job provided.
+         *
+         * @param {zowe.IJob} job The job object to cancel
+         * @returns {Promise<boolean>} Whether the job was successfully cancelled
+         * @memberof IJes
+         */
+        cancelJob?(job: zowe.IJob): Promise<boolean>;
 
         /**
          * Cancels and purges a job identified by name and id.
@@ -506,10 +566,7 @@ export namespace ZoweExplorerApi {
          * might want to check for an existing profile folder with meta-file
          * or to create them automatically if it is non-existant.
          */
-        initForZowe(
-            type: string,
-            profileTypeConfigurations?: zowe.imperative.ICommandProfileTypeConfiguration[]
-        ): Promise<void>;
+        initForZowe(type: string, profileTypeConfigurations?: zowe.imperative.ICommandProfileTypeConfiguration[]): Promise<void>;
     }
 
     /**
@@ -608,5 +665,10 @@ export namespace ZoweExplorerApi {
          * @returns {string[]}
          */
         registeredApiTypes(): string[];
+
+        /**
+         * Define events that fire whenever an existing team config profile is updated.
+         */
+        onProfilesUpdate?: vscode.Event<EventTypes>;
     }
 }

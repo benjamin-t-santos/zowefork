@@ -1,15 +1,14 @@
-/*
- * This program and the accompanying materials are made available under the terms of the *
- * Eclipse Public License v2.0 which accompanies this distribution, and is available at *
- * https://www.eclipse.org/legal/epl-v20.html                                      *
- *                                                                                 *
- * SPDX-License-Identifier: EPL-2.0                                                *
- *                                                                                 *
- * Copyright Contributors to the Zowe Project.                                     *
- *                                                                                 *
+/**
+ * This program and the accompanying materials are made available under the terms of the
+ * Eclipse Public License v2.0 which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-v20.html
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Copyright Contributors to the Zowe Project.
+ *
  */
 
-import { IZoweDatasetTreeNode, IZoweTree, IZoweUSSTreeNode } from "@zowe/zowe-explorer-api";
 import * as vscode from "vscode";
 import {
     workspaceUtilTabSwitchDelay,
@@ -25,7 +24,7 @@ interface IExtTextEditor extends vscode.TextEditor {
 /**
  * Opens the next tab in editor with given delay
  */
-function openNextTab(delay: number) {
+function openNextTab(delay: number): Promise<void> {
     return new Promise<void>((resolve) => {
         vscode.commands.executeCommand("workbench.action.nextEditor");
         setTimeout(() => resolve(), delay);
@@ -34,11 +33,11 @@ function openNextTab(delay: number) {
 
 let fileWasSaved = false;
 
-export function setFileSaved(status: boolean) {
+export function setFileSaved(status: boolean): void {
     fileWasSaved = status;
 }
 
-export async function awaitForDocumentBeingSaved() {
+export async function awaitForDocumentBeingSaved(): Promise<void> {
     fileWasSaved = false;
     return new Promise<void>((resolve) => {
         let count = 0;
@@ -65,7 +64,7 @@ export async function awaitForDocumentBeingSaved() {
  * Idea of the approach was borrowed from the another extension: https://github.com/eamodio/vscode-restore-editors/blob/master/src/documentManager.ts
  * Also notice that timer delay as well as iteration through opened tabs can cause side-effects on slow machines
  */
-export async function checkTextFileIsOpened(path: string) {
+export async function checkTextFileIsOpened(path: string): Promise<boolean> {
     const openedWindows = [] as IExtTextEditor[];
 
     let emptySelectedCountInTheRow = 0;
@@ -96,7 +95,7 @@ export async function checkTextFileIsOpened(path: string) {
  * This kind of method is caused by incompleteness of VSCode API, which allows to close only currently selected editor
  * For us it means we need to select editor first, which is again not possible via existing VSCode APIs
  */
-export async function closeOpenedTextFile(path: string) {
+export async function closeOpenedTextFile(path: string): Promise<boolean> {
     const openedWindows = [] as IExtTextEditor[];
 
     let emptySelectedCountInTheRow = 0;
@@ -132,27 +131,15 @@ export async function closeOpenedTextFile(path: string) {
 }
 
 /**
- * Handle auto/regular save by prioritizing the last ongoing save of a series queued saves
+ * Mark a text document as dirty (unsaved) if contents failed to upload.
+ * Based on https://stackoverflow.com/questions/74224108
  */
-const savingQueue = [];
-let latestSavedFile: vscode.TextDocument;
-let ongoingSave = false;
-export async function handleSaving(
-    uploadRequest: (document, provider) => Promise<void | string>,
-    savedFile: vscode.TextDocument,
-    fileProvider: IZoweTree<IZoweUSSTreeNode | IZoweDatasetTreeNode>
-): Promise<void> {
-    const saving = {
-        savedFile,
-    };
-    savingQueue.push(saving);
-    if (ongoingSave) {
-        return;
-    }
-    ongoingSave = true;
-    while (savingQueue.length !== 0) {
-        latestSavedFile = savingQueue.shift().savedFile;
-        await uploadRequest(latestSavedFile, fileProvider);
-    }
-    ongoingSave = false;
+export async function markDocumentUnsaved(document: vscode.TextDocument): Promise<void> {
+    const edits = new vscode.WorkspaceEdit();
+    edits.insert(document.uri, new vscode.Position(0, 0), " ");
+    await vscode.workspace.applyEdit(edits);
+
+    const edits2 = new vscode.WorkspaceEdit();
+    edits2.delete(document.uri, new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 1)));
+    await vscode.workspace.applyEdit(edits2);
 }
