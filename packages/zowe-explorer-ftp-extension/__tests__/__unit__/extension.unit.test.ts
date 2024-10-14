@@ -19,7 +19,7 @@ describe("Extension Unit Tests - function registerFtpApis", () => {
         jest.clearAllMocks();
     });
 
-    it("should register the ftp API's", async () => {
+    it("should register the ftp API's", () => {
         const registerUssApiMock = jest.fn();
         const registerJesApiMock = jest.fn();
         const registerMvsApiMock = jest.fn();
@@ -41,12 +41,12 @@ describe("Extension Unit Tests - function registerFtpApis", () => {
                 extensionPath: "./test",
             } as unknown as vscode.ExtensionContext)
         ).toEqual(undefined);
-        expect(registerUssApiMock).toBeCalledTimes(1);
-        expect(registerMvsApiMock).toBeCalledTimes(1);
-        expect(registerJesApiMock).toBeCalledTimes(1);
+        expect(registerUssApiMock).toHaveBeenCalledTimes(1);
+        expect(registerMvsApiMock).toHaveBeenCalledTimes(1);
+        expect(registerJesApiMock).toHaveBeenCalledTimes(1);
     });
 
-    it("should display error if zoweExplorerApi was not found", async () => {
+    it("should display error if zoweExplorerApi was not found", () => {
         jest.spyOn(ZoweVsCodeExtension, "getZoweExplorerApi").mockReturnValue(null);
         const showMessageSpy = jest.spyOn(Gui, "showMessage").mockImplementation();
         expect(
@@ -55,6 +55,6 @@ describe("Extension Unit Tests - function registerFtpApis", () => {
                 extensionPath: "./test",
             } as unknown as vscode.ExtensionContext)
         ).toEqual(undefined);
-        expect(showMessageSpy).toBeCalledTimes(1);
+        expect(showMessageSpy).toHaveBeenCalledTimes(1);
     });
 });

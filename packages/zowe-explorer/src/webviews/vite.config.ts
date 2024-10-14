@@ -14,6 +14,7 @@ import preact from "@preact/preset-vite";
 import * as path from "path";
 import { readdirSync } from "fs";
 import checker from "vite-plugin-checker";
+import { viteStaticCopy } from "vite-plugin-static-copy";
 
 // https://vitejs.dev/config/
 
@@ -28,11 +29,10 @@ interface Webviews {
  * @returns Object the object where the key is the webview and the value is the location of the webview
  */
 const getAvailableWebviews = (source: string): Webviews => {
-    const webviews = readdirSync(source, { withFileTypes: true })
+    return readdirSync(source, { withFileTypes: true })
         .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => dirent.name);
-
-    return webviews.reduce((o, key) => Object.assign(o, { [key]: path.resolve("src", key, "index.html") }), {});
+        .map((dirent) => dirent.name)
+        .reduce((o, key) => Object.assign(o, { [key]: path.resolve("src", key, "index.html") }), {});
 };
 
 export default defineConfig({
@@ -41,9 +41,23 @@ export default defineConfig({
         checker({
             typescript: true,
         }),
+        viteStaticCopy({
+            targets: [
+                {
+                    src: "../../../node_modules/@vscode/codicons/dist/codicon.css",
+                    dest: "codicons/",
+                },
+                {
+                    src: "../../../node_modules/@vscode/codicons/dist/codicon.ttf",
+                    dest: "codicons/",
+                },
+            ],
+        }),
     ],
     root: path.resolve(__dirname, "src"),
     build: {
+        chunkSizeWarningLimit: 1000,
+        cssCodeSplit: false,
         emptyOutDir: true,
         outDir: path.resolve(__dirname, "dist"),
         rollupOptions: {
@@ -52,7 +66,16 @@ export default defineConfig({
                 entryFileNames: `[name]/[name].js`,
                 chunkFileNames: `[name]/[name].js`,
                 assetFileNames: `[name]/[name].[ext]`,
+                manualChunks: {
+                    "ag-grid-react": ["ag-grid-react"],
+                },
             },
+        },
+    },
+    resolve: {
+        alias: {
+            react: "preact/compat",
+            "react-dom": "preact/compat",
         },
     },
 });

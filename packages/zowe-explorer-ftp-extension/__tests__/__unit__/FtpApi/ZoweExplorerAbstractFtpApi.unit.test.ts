@@ -9,15 +9,14 @@
  *
  */
 
-import { sessionMap, ZoweLogger } from "../../../src/extension";
+import * as globals from "../../../src/globals";
 import { AbstractFtpApi } from "../../../src/ZoweExplorerAbstractFtpApi";
 import { FtpSession } from "../../../src/ftpSession";
 import { FTPConfig, IZosFTPProfile } from "@zowe/zos-ftp-for-zowe-cli";
-import { Gui, MessageSeverity } from "@zowe/zowe-explorer-api";
-import { imperative } from "@zowe/cli";
+import { Gui, imperative, MessageSeverity } from "@zowe/zowe-explorer-api";
 
 jest.mock("zos-node-accessor");
-ZoweLogger.getExtensionName = jest.fn().mockReturnValue("Zowe Explorer FTP Extension");
+globals.LOGGER.getExtensionName = jest.fn().mockReturnValue("Zowe Explorer FTP Extension");
 
 class Dummy extends AbstractFtpApi {}
 
@@ -35,20 +34,20 @@ describe("AbstractFtpApi", () => {
 
         expect(result).toBeInstanceOf(FtpSession);
         expect(result.ISession.hostname).toBe("1.1.1.1");
-        expect(sessionMap.size).toBe(1);
+        expect(globals.SESSION_MAP.size).toBe(1);
     });
 
     it("should remove the record in sessionMap when call logout function.", async () => {
         const instance = new Dummy();
         const result = instance.getSession(profile);
         const session = new FtpSession(result.ISession);
-        sessionMap.get = jest.fn().mockReturnValue(session);
+        globals.SESSION_MAP.get = jest.fn().mockReturnValue(session);
         session.releaseConnections = jest.fn();
 
         await instance.logout(session);
 
-        expect(session.releaseConnections).toBeCalledTimes(1);
-        expect(sessionMap.size).toBe(0);
+        expect(session.releaseConnections).toHaveBeenCalledTimes(1);
+        expect(globals.SESSION_MAP.size).toBe(0);
     });
 
     it("should show a fatal message when trying to load an invalid profile.", () => {
@@ -64,7 +63,7 @@ describe("AbstractFtpApi", () => {
                 "Internal error: ZoweVscFtpRestApi instance was not initialized with a valid Zowe profile.",
                 {
                     severity: MessageSeverity.FATAL,
-                    logger: ZoweLogger,
+                    logger: globals.LOGGER,
                 }
             );
         }
@@ -73,7 +72,7 @@ describe("AbstractFtpApi", () => {
     it("should show a fatal message when trying to call getStatus with invalid credentials.", async () => {
         Object.defineProperty(Gui, "errorMessage", { value: jest.fn(), configurable: true });
         jest.spyOn(FTPConfig, "connectFromArguments").mockImplementationOnce(
-            jest.fn((val) => {
+            jest.fn((_val) => {
                 throw new Error("Failed: missing credentials");
             })
         );
@@ -96,7 +95,7 @@ describe("AbstractFtpApi", () => {
     it("should show a different fatal message when trying to call getStatus and an exception occurs.", async () => {
         Object.defineProperty(Gui, "errorMessage", { value: jest.fn(), configurable: true });
         jest.spyOn(FTPConfig, "connectFromArguments").mockImplementationOnce(
-            jest.fn((prof) => {
+            jest.fn((_prof) => {
                 throw new Error("Something happened");
             })
         );
@@ -125,10 +124,13 @@ describe("AbstractFtpApi", () => {
             failNotFound: true,
         };
         try {
-            expect(Gui.showMessage).toBeCalledWith("Internal error: ZoweVscFtpRestApi instance was not initialized with a valid Zowe profile.", {
-                severity: MessageSeverity.FATAL,
-                logger: ZoweLogger,
-            });
+            expect(Gui.showMessage).toHaveBeenCalledWith(
+                "Internal error: ZoweVscFtpRestApi instance was not initialized with a valid Zowe profile.",
+                {
+                    severity: MessageSeverity.FATAL,
+                    logger: globals.LOGGER,
+                }
+            );
             instance.checkedProfile();
         } catch (err) {
             expect(err).not.toBeUndefined();
@@ -139,7 +141,9 @@ describe("AbstractFtpApi", () => {
     it("should return active from sessionStatus when getStatus is called w/ correct profile", async () => {
         Object.defineProperty(Gui, "showMessage", { value: jest.fn(), configurable: true });
         const instance = new Dummy(profile);
-        jest.spyOn(FTPConfig, "connectFromArguments").mockImplementationOnce(jest.fn((prof) => Promise.resolve({ test: "Test successful object" })));
+        jest.spyOn(FTPConfig, "connectFromArguments").mockImplementationOnce(
+            jest.fn(((_prof) => Promise.resolve({ test: "Test successful object" })) as any)
+        );
 
         const status = await instance.getStatus(profile, "zftp");
         expect(status).toStrictEqual("active");
@@ -148,7 +152,7 @@ describe("AbstractFtpApi", () => {
     it("should return inactive from sessionStatus when getStatus is called w/ correct profile", async () => {
         Object.defineProperty(Gui, "showMessage", { value: jest.fn(), configurable: true });
         const instance = new Dummy(profile);
-        jest.spyOn(FTPConfig, "connectFromArguments").mockImplementationOnce(jest.fn((prof) => Promise.resolve(false)));
+        jest.spyOn(FTPConfig, "connectFromArguments").mockImplementationOnce(jest.fn(((_prof) => Promise.resolve(false)) as any));
 
         const status = await instance.getStatus(profile, "zftp");
         expect(status).toStrictEqual("inactive");
@@ -186,7 +190,7 @@ describe("AbstractFtpApi", () => {
         instance.releaseConnection({
             close: connectionMock,
         });
-        expect(connectionMock).toBeCalledTimes(1);
+        expect(connectionMock).toHaveBeenCalledTimes(1);
     });
 
     it("should return the profile type of 'zftp'", () => {

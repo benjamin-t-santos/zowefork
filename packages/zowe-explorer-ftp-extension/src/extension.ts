@@ -10,24 +10,21 @@
  */
 
 import * as vscode from "vscode";
-import * as path from "path";
-import { Gui, IZoweLogger, MessageSeverity, ZoweVsCodeExtension } from "@zowe/zowe-explorer-api";
+import { Gui, MessageSeverity, ZoweVsCodeExtension } from "@zowe/zowe-explorer-api";
 import { FtpUssApi } from "./ZoweExplorerFtpUssApi";
 import { FtpMvsApi } from "./ZoweExplorerFtpMvsApi";
 import { FtpJesApi } from "./ZoweExplorerFtpJesApi";
 import { CoreUtils } from "@zowe/zos-ftp-for-zowe-cli";
-import { imperative } from "@zowe/cli";
-import { FtpSession } from "./ftpSession";
-
-export const ZoweLogger = new IZoweLogger("Zowe Explorer FTP Extension", ZoweVsCodeExtension.customLoggingPath ?? path.join(__dirname, "..", ".."));
+import * as globals from "./globals";
+import { AbstractFtpApi } from "./ZoweExplorerAbstractFtpApi";
 
 export function activate(_context: vscode.ExtensionContext): void {
     void registerFtpApis();
 }
 
 export function deactivate(_context: vscode.ExtensionContext): void {
-    sessionMap.forEach((session) => session.releaseConnections());
-    sessionMap.clear();
+    globals.SESSION_MAP.forEach((session) => session.releaseConnections());
+    globals.SESSION_MAP.clear();
 }
 
 /**
@@ -42,19 +39,18 @@ async function registerFtpApis(): Promise<boolean> {
         zoweExplorerApi.registerMvsApi(new FtpMvsApi());
         zoweExplorerApi.registerJesApi(new FtpJesApi());
 
-        const meta = await CoreUtils.getProfileMeta();
-        await zoweExplorerApi.getExplorerExtenderApi().initForZowe("zftp", meta);
-        await zoweExplorerApi.getExplorerExtenderApi().reloadProfiles("zftp");
+        const schema = await CoreUtils.getProfileSchema();
+        const pType = AbstractFtpApi.getProfileTypeName();
+        await zoweExplorerApi.getExplorerExtenderApi().initForZowe(pType, schema);
+        await zoweExplorerApi.getExplorerExtenderApi().reloadProfiles(pType);
 
-        await Gui.showMessage("Zowe Explorer was modified for FTP support.", { logger: ZoweLogger });
+        globals.LOGGER.logImperativeMessage("Zowe Explorer was modified for FTP support.", MessageSeverity.INFO);
 
         return true;
     }
     await Gui.showMessage("Zowe Explorer was not found: either it is not installed or you are using an older version without extensibility API.", {
         severity: MessageSeverity.FATAL,
-        logger: ZoweLogger,
+        logger: globals.LOGGER,
     });
     return false;
 }
-
-export const sessionMap = new Map<imperative.IProfileLoaded, FtpSession>();

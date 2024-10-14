@@ -10,16 +10,31 @@
  */
 
 import * as vscode from "vscode";
-import { IJob, imperative } from "@zowe/cli";
-import { IZoweTree } from "./IZoweTree";
-import { FileAttributes } from "../utils/files";
-import { DatasetFilter, NodeSort } from "./sorting";
+import * as imperative from "@zowe/imperative";
+import { Sorting } from "./sorting";
+import { ZoweTreeNodeActions } from "./ZoweNodeActions";
+import type { Types } from "../Types";
+import { IJob } from "@zowe/zos-jobs-for-zowe-sdk";
+import { IZosFilesResponse } from "@zowe/zos-files-for-zowe-sdk";
 
-export type IZoweNodeType = IZoweDatasetTreeNode | IZoweUSSTreeNode | IZoweJobTreeNode;
-
-export enum NodeAction {
-    Download = "download",
+interface TextEncoding {
+    kind: "text";
 }
+
+interface BinaryEncoding {
+    kind: "binary";
+}
+
+interface OtherEncoding {
+    kind: "other";
+    codepage: string;
+}
+
+export type ZosEncoding = TextEncoding | BinaryEncoding | OtherEncoding;
+
+export type EncodingMap = Record<string, ZosEncoding>;
+
+export type DatasetMatch = { dsn: string; member?: string };
 
 /**
  * The base interface for Zowe tree nodes that are implemented by vscode.TreeItem.
@@ -27,96 +42,79 @@ export enum NodeAction {
  * @export
  * @interface IZoweTreeNode
  */
-export interface IZoweTreeNode {
-    /**
-     * The icon path or [ThemeIcon](#ThemeIcon) for the tree item.
-     */
-    iconPath?: string | vscode.Uri | { light: string | vscode.Uri; dark: string | vscode.Uri } | vscode.ThemeIcon;
+export interface IZoweTreeNode extends vscode.TreeItem {
     /**
      * Indicator that the child data may have become stale and requires refreshing.
      */
     dirty: boolean;
-    /**
-     *  A human-readable string describing this item.
-     */
-    label?: string | vscode.TreeItemLabel;
-    /**
-     * A description for this tree item.
-     */
-    description?: string | boolean;
-    /**
-     * A unique identifier for this tree item.
-     * Used to prevent VScode from losing track of TreeItems in a TreeProvider.
-     */
-    id?: string;
-    /**
-     * The tooltip text when you hover over this item.
-     */
-    tooltip?: string | vscode.MarkdownString | undefined;
+
     /**
      * Describes the full path of a file
      */
     fullPath?: string;
+
     /**
      * Children nodes of this node
      */
     children?: IZoweTreeNode[];
-    /**
-     * [TreeItemCollapsibleState](#TreeItemCollapsibleState) of the tree item.
-     */
-    collapsibleState?: vscode.TreeItemCollapsibleState;
-    /**
-     * Context value of the tree item. This can be used to contribute item specific actions in the tree.
-     *
-     * This will show action `extension.deleteFolder` only for items with `contextValue` is `folder`.
-     */
-    contextValue?: string;
+
     /**
      * Any ongoing actions that must be awaited before continuing
      */
-    ongoingActions?: Record<NodeAction | string, Promise<any>>;
+    ongoingActions?: Record<ZoweTreeNodeActions.Interactions | string, Promise<any>>;
+
     /**
      * whether the node was double-clicked
      */
     wasDoubleClicked?: boolean;
+
     /**
      * Sorting method for this node's children
      */
-    sort?: NodeSort;
+    sort?: Sorting.NodeSort;
+
     /**
      * Retrieves the node label
      */
     getLabel(): string | vscode.TreeItemLabel;
+
     /**
      * Retrieves the nodes parent node
      */
     getParent(): IZoweTreeNode;
+
     /**
      * Retrieves the nodes children nodes
      */
     getChildren(): Promise<IZoweTreeNode[]>;
+
     /**
      * Retrieves the profile name in use with this node
      */
     getProfileName(): string;
+
     /**
      * Retrieves the session node in use with this node
      */
     getSessionNode(): IZoweTreeNode;
+
     /**
      * Retrieves the session object in use with this node
      */
     getSession(): imperative.Session;
+
     /**
      * Retrieves the profile object in use with this node
      */
     getProfile(): imperative.IProfileLoaded;
+
     /**
      * Set the profile to use for this node to be the one chosen in the parameters
      *
      * @param profileObj The profile you will set the node to use
      */
     setProfileToChoice(profileObj: imperative.IProfileLoaded): void;
+
     /**
      * Set the session to use for this node to be the one chosen in the parameters
      *
@@ -124,12 +122,6 @@ export interface IZoweTreeNode {
      */
     setSessionToChoice(sessionObj: imperative.Session): void;
 }
-
-export type DatasetStats = {
-    user: string;
-    // built from "m4date", "mtime" and "msec" variables from z/OSMF API response
-    modifiedDate: Date;
-};
 
 /**
  * Extended interface for Zowe Dataset tree nodes.
@@ -142,36 +134,121 @@ export interface IZoweDatasetTreeNode extends IZoweTreeNode {
      * Search criteria for a Dataset search
      */
     pattern?: string;
+
     /**
      * Search criteria for a Dataset member search
      */
     memberPattern?: string;
+
     /**
+     * Pattern matches used for parsing member wildcards
+     */
+    patternMatches?: DatasetMatch[];
+
+    /**
+     * @deprecated Please use `setStats` and `getStats` instead.
+     *
      * Additional statistics about this data set
      */
-    stats?: Partial<DatasetStats>;
+    stats?: Partial<Types.DatasetStats>;
+
     /**
      * Filter method for this data set's children
      */
-    filter?: DatasetFilter;
+    filter?: Sorting.DatasetFilter;
+
+    /**
+     * @deprecated Please use `getEncodingInMap` and `updateEncodingInMap` instead.
+     *
+     * List of child nodes and user-selected encodings
+     */
+    encodingMap?: Record<string, ZosEncoding>;
+
+    /**
+     * @deprecated Please use `setEncoding` and `getEncoding` instead.
+     *
+     * Binary indicator. Default false (text)
+     */
+    binary?: boolean;
+
+    /**
+     * @deprecated Please use `setEncoding` and `getEncoding` instead.
+     *
+     * Remote encoding of the data set
+     *
+     * * `null` = user selected z/OS default codepage
+     * * `undefined` = user did not specify
+     */
+    encoding?: string;
+
+    /**
+     * Use Dataset-specific tree node for children.
+     */
+    children?: IZoweDatasetTreeNode[];
+
     /**
      * Retrieves child nodes of this IZoweDatasetTreeNode
      *
      * @returns {Promise<IZoweDatasetTreeNode[]>}
      */
     getChildren(): Promise<IZoweDatasetTreeNode[]>;
+
     /**
      * Retrieves the etag value for the file
      *
      * @returns {string}
      */
-    getEtag?(): string;
+    getEtag(): string | PromiseLike<string>;
+
     /**
      * Sets the etag value for the file
      *
      * @param {string}
      */
-    setEtag?(etag: string);
+    setEtag(etag: string): void | PromiseLike<void>;
+
+    /**
+     * Downloads and displays a file in a text editor view
+     *
+     * @param download Download the file default false
+     * @param preview the file, true or false
+     * @param datasetFileProvider the tree provider
+     */
+    openDs?(download: boolean, previewFile: boolean, datasetFileProvider: Types.IZoweDatasetTreeType): Promise<void>;
+
+    /**
+     * Gets the codepage value for the file
+     *
+     * @param {string}
+     */
+    getEncoding(): ZosEncoding | PromiseLike<ZosEncoding>;
+
+    /**
+     * Sets the codepage value for the file
+     *
+     * @param {string}
+     */
+    setEncoding(encoding: ZosEncoding): void | PromiseLike<void>;
+
+    /**
+     * Returns the encoding map for the USS tree node.
+     */
+    getEncodingInMap(uriPath: string): ZosEncoding | PromiseLike<ZosEncoding>;
+
+    /**
+     * Sets the encoding map for the USS tree node.
+     */
+    updateEncodingInMap(uriPath: string, encoding: ZosEncoding): void | PromiseLike<void>;
+
+    /**
+     * Returns the stats for a data set.
+     */
+    getStats(): Types.DatasetStats;
+
+    /**
+     * Sets the stats for a data set.
+     */
+    setStats(stats: Partial<Types.DatasetStats>): void | PromiseLike<void>;
 }
 
 /**
@@ -182,68 +259,131 @@ export interface IZoweDatasetTreeNode extends IZoweTreeNode {
  */
 export interface IZoweUSSTreeNode extends IZoweTreeNode {
     /**
+     * @deprecated Please use `getBaseName` instead.
+     *
      * Retrieves an abridged for of the label
      */
     shortLabel?: string;
+
     /**
-     * List of child nodes downloaded in binary format
+     * @deprecated Please use `setEncoding` and `getEncoding` instead.
+     *
+     * Remote encoding of the USS file
+     *
+     * * `null` = user selected z/OS default codepage
+     * * `undefined` = user did not specify
      */
-    binaryFiles?: Record<string, unknown>;
+    encoding?: string;
+
     /**
+     * @deprecated Please use `getEncodingInMap` and `updateEncodingInMap` instead.
+     *
+     * List of child nodes and user-selected encodings
+     */
+    encodingMap?: Record<string, ZosEncoding>;
+
+    /**
+     * @deprecated Please use `getEncoding` and `setEncoding` instead.
+     *
      * Binary indicator. Default false (text)
      */
     binary?: boolean;
-    /**
-     * Specific profile name in use with this node
-     */
-    mProfileName?: string;
 
     /**
+     * @deprecated Please use `setAttributes` and `getAttributes` instead.
+     *
      * File attributes
      */
-    attributes?: FileAttributes;
+    attributes?: Types.FileAttributes;
+
     /**
      * Event that fires whenever an existing node is updated.
      */
     onUpdateEmitter?: vscode.EventEmitter<IZoweUSSTreeNode>;
+
+    /**
+     * Use USS-specific tree node for children.
+     */
+    children?: IZoweUSSTreeNode[];
+
     /**
      * Event that fires whenever an existing node is updated.
      */
     onUpdate?: vscode.Event<IZoweUSSTreeNode>;
+
+    /**
+     * Returns the base name of the USS tree node.
+     */
+    getBaseName(): string | PromiseLike<string>;
+
     /**
      * Retrieves child nodes of this IZoweUSSTreeNode
      *
      * @returns {Promise<IZoweUSSTreeNode[]>}
      */
     getChildren(): Promise<IZoweUSSTreeNode[]>;
+
+    /**
+     * Returns the last-saved encoding from the encoding map for the USS tree node.
+     */
+    getEncodingInMap(uriPath: string): ZosEncoding | PromiseLike<ZosEncoding>;
+
+    /**
+     * Update the encoding map to contain the encoding for the USS tree node.
+     */
+    updateEncodingInMap(path: string, encoding: ZosEncoding): void | PromiseLike<void>;
+
     /**
      * Retrieves the etag value for the file
      *
      * @returns {string}
      */
-    getEtag?(): string;
+    getEtag(): string | PromiseLike<string>;
+
     /**
      * Sets the etag value for the file
      *
      * @param {string}
      */
-    setEtag?(etag: string);
+    setEtag(etag: string): void | PromiseLike<void>;
+
+    /**
+     * Gets the attributes for the USS file/folder.
+     */
+    getAttributes(): Types.FileAttributes | PromiseLike<Types.FileAttributes>;
+
+    /**
+     * Sets the attributes for the USS file/folder.
+     */
+    setAttributes(attributes: Partial<Types.FileAttributes>): void | PromiseLike<void>;
+
     /**
      * Renaming a USS Node. This could be a Favorite Node
      *
      * @param {string} newNamePath
      */
-    rename?(newNamePath: string);
+    rename?(newNamePath: string): Promise<IZosFilesResponse>;
+
     /**
-     * Specifies the field as binary
-     * @param binary true is a binary file otherwise false
+     * Gets the codepage value for the file
+     *
+     * @param {string}
      */
-    setBinary?(binary: boolean);
+    getEncoding(): ZosEncoding | PromiseLike<ZosEncoding>;
+
+    /**
+     * Sets the codepage value for the file
+     *
+     * @param {string}
+     */
+    setEncoding(encoding: ZosEncoding): void | PromiseLike<void>;
+
     // /**
     //  * Opens the text document
     //  * @return vscode.TextDocument
     //  */
     // getOpenedDocumentInstance?(): vscode.TextDocument;
+
     /**
      * Downloads and displays a file in a text editor view
      *
@@ -251,58 +391,53 @@ export interface IZoweUSSTreeNode extends IZoweTreeNode {
      * @param preview the file, true or false
      * @param ussFileProvider the tree provider
      */
-    openUSS?(download: boolean, previewFile: boolean, ussFileProvider: IZoweTree<IZoweUSSTreeNode>);
+    openUSS?(download: boolean, previewFile: boolean, ussFileProvider: Types.IZoweUSSTreeType): void | Promise<void>;
+
     /**
      * Returns the local file path for the ZoweUSSNode
-     *
+     * @deprecated Zowe Explorer no longer uses local file paths for uploading and downloading USS files.
      */
     getUSSDocumentFilePath?(): string;
+
     /**
      * Refreshes the node with current mainframe data
      *
      */
-    refreshUSS?();
+    refreshUSS?(): void | Promise<void>;
+
     /**
      *
      * @param ussFileProvider Deletes the USS tree node
      * @param filePath
      * @param cancelled optional
      */
-    deleteUSSNode?(ussFileProvider: IZoweTree<IZoweUSSTreeNode>, filePath: string, cancelled?: boolean);
+    deleteUSSNode?(ussFileProvider: Types.IZoweUSSTreeType, filePath: string, cancelled?: boolean): void | Promise<void>;
+
     /**
      * Process for renaming a USS Node. This could be a Favorite Node
      *
      * @param {USSTree} ussFileProvider
      * @param {string} filePath
      */
-    renameUSSNode?(ussFileProvider: IZoweTree<IZoweUSSTreeNode>, filePath: string);
-    /**
-     * Refreshes node and reopens it.
-     * @param hasClosedInstance
-     * @deprecated Use reopen instead. Will be removed by version 2.0.
-     */
-    refreshAndReopen?(hasClosedInstance?: boolean);
+    renameUSSNode?(ussFileProvider: Types.IZoweUSSTreeType, filePath: string): void | Promise<void>;
+
     /**
      * Reopens a file if it was closed (e.g. while it was being renamed).
      * @param hasClosedInstance
      */
-    reopen?(hasClosedInstance?: boolean);
+    reopen?(hasClosedInstance?: boolean): void | Promise<void>;
+
     /**
      * Adds a search node to the USS favorites list
      *
      * @param {USSTree} ussFileProvider
      */
-    saveSearch?(ussFileProvider: IZoweTree<IZoweUSSTreeNode>);
-    /**
-     * uploads selected uss node(s) to from clipboard to mainframe
-     * @deprecated in favor of `pasteUssTree`
-     */
-    copyUssFile?();
+    saveSearch?(ussFileProvider: Types.IZoweUSSTreeType): void | Promise<void>;
 
     /**
      * Uploads a tree of USS file(s)/folder(s) to mainframe
      */
-    pasteUssTree?();
+    pasteUssTree?(): void | Promise<void>;
 }
 
 /**
@@ -316,35 +451,52 @@ export interface IZoweJobTreeNode extends IZoweTreeNode {
      * Use Job-specific tree node for children.
      */
     children?: IZoweJobTreeNode[];
+
     /**
      * Standard job response document
      * Represents the attributes and status of a z/OS batch job
      * @interface IJob
      */
     job?: IJob;
+
     /**
      * Search criteria for a Job search
      */
     searchId?: string;
+
     /**
      * Job Prefix i.e "MYJOB"
      * Attribute of Job query
      */
     prefix?: string;
+
     /**
      * Job Owner i.e "MYID"
      * Attribute of Job query
      */
     owner?: string;
+
     /**
      * Job Status i.e "ACTIVE"
      * Attribute of Job query
      */
     status?: string;
+
     /**
      * Returns whether the job node is a filtered search
      */
     filtered?: boolean;
+
+    /**
+     * Filter method for this job search
+     */
+    filter?: string;
+
+    /**
+     * Array of original filter search results job's children
+     */
+    actualJobs?: IZoweTreeNode[];
+
     /**
      * Retrieves child nodes of this IZoweJobTreeNode
      *

@@ -6,7 +6,213 @@ All notable changes to the "zowe-explorer-ftp-extension" extension will be docum
 
 ### Bug fixes
 
+## `3.0.1`
+
+### Bug fixes
+
+- Fixed bug where the `getContents` MVS and USS APIs failed to return whenever a local file path was provided. [#3199](https://github.com/zowe/zowe-explorer-vscode/issues/3199)
+
+## `3.0.0`
+
+### New features and enhancements
+
+- Renamed extension to `IBM z/OS FTP for Zowe Explorer`. [#2990](https://github.com/zowe/zowe-explorer-vscode/issues/2990)
+- Updated the FTP plug-in dependency to `3.0.0` for Zowe V3 support. [#2783](https://github.com/zowe/vscode-extension-for-zowe/pull/2783).
+- Updated from `@zowe/cli` package dependency to individual Zowe `8.0.0` SDK packages for Zowe V3 support. [#2719](https://github.com/zowe/vscode-extension-for-zowe/issues/2719)
+- Updated Zowe Explorer API dependency to `3.0.0` for Zowe V3 support and addressed breaking changes. Check the [list](https://github.com/zowe/zowe-explorer-vscode/wiki/v3-Changes-for-Users-and-Extenders) of APIs that were removed.
+- Updated VS Code engine support to `1.79.0` and higher.
+- Updated VS Code activation event to `onStartupFinished`. [#1910](https://github.com/zowe/vscode-extension-for-zowe/issues/1910)
+- Removal of Zowe V1 profile support. [#2072](https://github.com/zowe/vscode-extension-for-zowe/issues/2072)
+- Migrated to new package manager PNPM from Yarn.
+- Migrated to webpack V5 [#2214](https://github.com/zowe/vscode-extension-for-zowe/issues/2214)
+- Added `madge` dependency for support to track circular dependencies. [#2148](https://github.com/zowe/vscode-extension-for-zowe/issues/2148)
+- Replaced `ts-loader` dependency with `esbuild-loader` to improve build speed for developers. [#2909](https://github.com/zowe/zowe-explorer-vscode/pull/2909)
+- Added support for streams to the `getContents` and `putContents` functions (`FtpMvsApi` and `FtpUssApi` interfaces) with the following API: `uploadFromBuffer`.
+- Removed pop-up notification of successful registration with Zowe Explorer and log the success message. [#2862](https://github.com/zowe/zowe-explorer-vscode/issues/2862)
+- **Breaking:** updated the `FtpMvsApi.putContents` function to throw an error when an e-tag conflict is found to establish consistency with the `FtpUssApi.putContents` function which has always thrown an error for this scenario.
+- **Breaking:** Removed the deprecated `FtpUssApi.putContents` function in favor of the `FtpUssApi.putContent` function.
+
+### Bug fixes
+
+- Changed the hashing algorithm for e-tag generation from `sha1` to `sha256` to avoid collisions. [#2890](https://github.com/zowe/zowe-explorer-vscode/pull/2890)
+- Fix Windows-specific hangs when saving members that contain JCL via the FTP extension. Thanks @tiantn & @std4lqi. [#2533](https://github.com/zowe/vscode-extension-for-zowe/issues/2533)
+- Removed outdated vscode-nls webpack plug-in [#2253](https://github.com/zowe/vscode-extension-for-zowe/issues/2253)
 - Fixed ECONNRESET error when trying to upload or create an empty data set member. [#2350](https://github.com/zowe/vscode-extension-for-zowe/issues/2350)
+- Updated additional dependencies for technical currency purposes.
+
+## `3.0.0-next.202409251932`
+
+### Bug fixes
+
+- Removed popup notification of successful registration with Zowe Explorer and log the success instead. [#2862](https://github.com/zowe/zowe-explorer-vscode/issues/2862)
+
+## `3.0.0-next.202409132122`
+
+## `3.0.0-next.202409091409`
+
+### Bug fixes
+
+- Update Zowe SDKs to `8.0.0-next.202408301809` for technical currency.
+- Update z/OS FTP Plug-in for Zowe CLI dependency to `3.0.0-next.202407311518`.
+
+## `3.0.0-next.202408301858`
+
+### New features and enhancements
+
+- Replaced `ts-loader` with `esbuild-loader` to improve build speed for developers. [#2909](https://github.com/zowe/zowe-explorer-vscode/pull/2909)
+
+### Bug fixes
+
+- Changed the hashing algorithm for e-tag generation from `sha1` to `sha256` to avoid collisions. [#2890](https://github.com/zowe/zowe-explorer-vscode/pull/2890)
+- Updated the FTP plugin dependency to `3.0.0-next.202403191358` for technical currency [#2783](https://github.com/zowe/vscode-extension-for-zowe/pull/2783).
+- Renamed extension to `IBM z/OS FTP for Zowe Explorer`. [#2990](https://github.com/zowe/zowe-explorer-vscode/issues/2990)
+- Update Zowe SDKs to `8.0.0-next.202408291544` for technical currency. [#3057](https://github.com/zowe/zowe-explorer-vscode/pull/3057)
+
+## `3.0.0-next.202404242037`
+
+### New features and enhancements
+
+- Changed the type for the options parameter in the `getContents` function (`MainframeInteraction.IUss` and `MainframeInteraction.IMvs` interfaces) from `zosfiles.IDownloadOptions` to `zosfiles.IDownloadSingleOptions`. [#2207](https://github.com/zowe/zowe-explorer-vscode/issues/2207)
+- Added support for streams to the `getContents` and `putContents` functions (`FtpMvsApi` and `FtpUssApi` interfaces).
+- **Breaking:** updated the `FtpMvsApi.putContents` function to throw an error when an e-tag conflict is found.
+  - This establishes consistency with the `FtpUssApi.putContents` function which has always thrown an error for this scenario.
+- **Breaking:** Removed the deprecated `FtpUssApi.putContents` function in favor of the `FtpUssApi.putContent` function.
+  - The `putContents` function was deprecated in v2 in favor of the replacement function that offers the same capabilities, as well as the feature to upload from a buffer.
+
+### Bug fixes
+
+- Updated the SDK dependencies to `8.0.0-next.202403041352` for technical currency [#2754](https://github.com/zowe/vscode-extension-for-zowe/pull/2754).
+
+## `3.0.0-next.202403051607`
+
+### New features and enhancements
+
+- Added the following API: `uploadFromBuffer`
+  - This API will be used for uploading contents in v3 instead of `putContent(s)`.
+- Migrated from `@zowe/cli` package to individual Zowe SDK packages. [#2719](https://github.com/zowe/vscode-extension-for-zowe/issues/2719)
+
+## `3.0.0-next.202402142205`
+
+### Bug fixes
+
+- Fix Windows-specific hangs when saving members that contain JCL via the FTP extension. Thanks @tiantn & @std4lqi. [#2533](https://github.com/zowe/vscode-extension-for-zowe/issues/2533)
+- Updated dependencies for technical currency purposes.
+
+## `3.0.0-next.202402071248`
+
+### New features and enhancements
+
+- Adapted to new API changes from grouping of common methods into singleton classes [#2109](https://github.com/zowe/vscode-extension-for-zowe/issues/2109)
+- Migrated to webpack v5 [#2214](https://github.com/zowe/vscode-extension-for-zowe/issues/2214)
+
+## `3.0.0-next.202401241448`
+
+### Bug fixes
+
+- Removed outdated vscode-nls webpack plugin [#2253](https://github.com/zowe/vscode-extension-for-zowe/issues/2253)
+
+## `3.0.0-next.202401121747`
+
+### Bug fixes
+
+- Update dependencies for technical currency purposes.
+
+## `3.0.0-next.202311171754`
+
+## `3.0.0-next.202311171523`
+
+### New features and enhancements
+
+- Support VS Code engine 1.79.0 and higher.
+
+## `3.0.0-next.202309121526`
+
+### New features and enhancements
+
+- Removal of support for Zowe Explorer APIs that have been removed. Check the [list](https://github.com/zowe/vscode-extension-for-zowe/tree/next/docs/early-access/v3/Extenders.md) of APIs that were removed.
+- Updated activation event to `onStartupFinished`. [#1910](https://github.com/zowe/vscode-extension-for-zowe/issues/1910)
+- Added `madge` script in `package.json` to track circular dependencies. [#2148](https://github.com/zowe/vscode-extension-for-zowe/issues/2148)
+- Migrated to new package manager PNPM from Yarn.
+
+### Bug fixes
+
+- Fixed ECONNRESET error when trying to upload or create an empty data set member. [#2350](https://github.com/zowe/vscode-extension-for-zowe/issues/2350)
+- Update Zowe SDKs to `8.0.0-next.202407051717` for technical currency. [#2918](https://github.com/zowe/zowe-explorer-vscode/issues/2918)
+
+## `2.18.0`
+
+### Bug fixes
+
+- Renamed extension to `IBM z/OS FTP for Zowe Explorer`. [#2990](https://github.com/zowe/zowe-explorer-vscode/issues/2990)
+
+## `2.17.0`
+
+## `2.16.3`
+
+## `2.16.2`
+
+### Bug fixes
+
+- Update dependencies for technical currency purposes.
+
+## `2.16.1`
+
+## `2.16.0`
+
+### Bug fixes
+
+- Fix issue with zFTP spool files not listing properly for active jobs. [#2832](https://github.com/zowe/zowe-explorer-vscode/issues/2832)
+- Changed the hashing algorithm for e-tag generation from `sha1` to `sha256` to avoid collisions. [#2890](https://github.com/zowe/zowe-explorer-vscode/pull/2890)
+
+## `2.15.4`
+
+## `2.15.3`
+
+## `2.15.2`
+
+## `2.15.1`
+
+## `2.15.0`
+
+## `2.14.1`
+
+### Bug fixes
+
+- Fix Windows-specific hangs when saving members that contain JCL via the FTP extension. Thanks @tiantn & @std4lqi. [#2533](https://github.com/zowe/vscode-extension-for-zowe/issues/2533)
+- Update transitive dependencies for technical currency.
+
+## `2.14.0`
+
+## `2.13.1`
+
+### Bug fixes
+
+- Update dependencies for technical currency purposes.
+
+## `2.13.0`
+
+## `2.12.2`
+
+## `2.12.1`
+
+### Bug fixes
+
+- Fixed issue where temporary files for e-tag comparison were not deleted after use.
+- Fixed issue where another connection attempt was made inside `putContents` (in `getContentsTag`) even though a connection was already active.
+
+## `2.12.0`
+
+### Bug fixes
+
+- Fixed ECONNRESET error when trying to upload or create an empty data set member. [#2350](https://github.com/zowe/vscode-extension-for-zowe/issues/2350)
+
+## `2.11.2`
+
+### Bug fixes
+
+- Update Zowe Explorer API dependency to pick up latest fixes for Zowe Secrets. [#2512](https://github.com/zowe/vscode-extension-for-zowe/issues/2512)
+
+## `2.11.1`
 
 ## `2.11.0`
 
@@ -26,10 +232,6 @@ All notable changes to the "zowe-explorer-ftp-extension" extension will be docum
 - Added missing `owner` and `group` attributes for the returned FTP response in `FtpUssApi.fileList`. [#2254](https://github.com/zowe/vscode-extension-for-zowe/issues/2254)
 
 ## `2.9.2`
-
-### New features and enhancements
-
-### Bug fixes
 
 ## `2.9.1`
 

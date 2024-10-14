@@ -10,7 +10,8 @@ import {
   VSCodeProgressRing,
   VSCodeTextField,
 } from "@vscode/webview-ui-toolkit/react";
-import isEqual from "lodash.isequal";
+import { isEqual } from "es-toolkit";
+import { isSecureOrigin } from "../utils";
 
 const vscodeApi = acquireVsCodeApi();
 
@@ -62,7 +63,7 @@ export function App() {
   useEffect(() => {
     window.addEventListener("message", (event) => {
       // Prevent users from sending data into webview outside of extension/webview context
-      if (!event.origin?.startsWith("vscode-webview://")) {
+      if (!isSecureOrigin(event.origin)) {
         return;
       }
 

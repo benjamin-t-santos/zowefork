@@ -6,18 +6,18 @@ Although currently limited to USS, the plan is to complete the implementation to
 
 ## How to build
 
-This repo uses [Yarn](https://yarnpkg.com/) for building.
+This repo uses [PNPM](https://pnpm.io/) for building.
 
 1. Clone this `zowe-explorer` repo:
 
    ```bash
-   git clone git@github.com:zowe/zowe/vscode-extension-for-zowe.git
+   git clone git@github.com:zowe/zowe/zowe-explorer-vscode.git
    ```
 
 1. Build the entire repo comprising of Zowe Explorer, Zowe Explorer API, and Zowe Explorer FTP with the following command:
 
    ```bash
-   yarn && yarn package
+   pnpm install && pnpm package
    ```
 
 ## How to run and debug
@@ -29,7 +29,7 @@ This repo uses [Yarn](https://yarnpkg.com/) for building.
 
 ## Review the sources
 
-As you will see, the implementation of this extension is very small and minimal. The main file to explore is `packages/zowe-explorer-ftp-extension/src/ZoweExplorerFtpApi.ts`, which is the FTP implementation of all the Zowe Explorer API methods required for USS. You can find the interface defining these operations in the Zowe Explorer API package under `packages/zowe-explorer-api/src/profiles/ZoweExplorerApi.ts`.
+As you will see, the implementation of this extension is very small and minimal. The main file to explore is `packages/zowe-explorer-ftp-extension/src/ZoweExplorerFtpApi.ts`, which is the FTP implementation of all the Zowe Explorer API methods required for USS. You can find the interface defining these operations in the Zowe Explorer API package under `packages/zowe-explorer-api/src/extend/interfaces.ts`.
 
 These FTP operations are not directly implemented in that file, but rather reuse and call the code provided by the z/OS FTP Plug-in for Zowe™ CLI, and are linked via the `@zowe/zos-ftp-for-zowe-cli` NPM dependency.
 
