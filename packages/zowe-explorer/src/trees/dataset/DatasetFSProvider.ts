@@ -203,10 +203,10 @@ export class DatasetFSProvider extends BaseProvider implements vscode.FileSystem
         const uriPath = uri.path.substring(uriInfo.slashAfterProfilePos + 1).split("/");
         const pdsMember = uriPath.length === 2;
         if (!entryExists) {
-            const resp = await ZoweExplorerApiRegister.getMvsApi(uriInfo.profile).dataSet(entryIsDir ? uriPath[0] : path.parse(uriPath[0]).name, {
+            const resp = await ZoweExplorerApiRegister.getMvsApi(uriInfo.profile).dataSet(entryIsDir ? uriPath[0] : path.parse(uriPath[1]).name, {
                 attributes: true,
             });
-            if (resp.success) {
+            if (resp.success && resp.apiResponse?.items.length > 0) {
                 const dsorg: string = resp.apiResponse?.items?.[0]?.dsorg;
                 entryIsDir = pdsMember ? false : dsorg?.startsWith("PO") ?? false;
             } else {
