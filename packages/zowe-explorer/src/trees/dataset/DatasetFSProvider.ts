@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * This program and the accompanying materials are made available under the terms of the
  * Eclipse Public License v2.0 which accompanies this distribution, and is available at
@@ -110,7 +111,10 @@ export class DatasetFSProvider extends BaseProvider implements vscode.FileSystem
             if (isPdsMember) {
                 // PDS member
                 const pds = this._lookupParentDirectory(uri);
-                resp = await ZoweExplorerApiRegister.getMvsApi(profile).allMembers(pds.name, { attributes: true });
+                resp = await ZoweExplorerApiRegister.getMvsApi(profile).allMembers(pds.name, {
+                    attributes: true,
+                    pattern: path.posix.parse(entry.name).name,
+                });
             } else {
                 // Data Set
                 resp = await ZoweExplorerApiRegister.getMvsApi(profile).dataSet(path.posix.basename(dsPath), {
@@ -128,7 +132,7 @@ export class DatasetFSProvider extends BaseProvider implements vscode.FileSystem
         // Attempt to parse a successful API response and update the data set's cached stats.
         if (resp.success) {
             const items = resp.apiResponse?.items ?? [];
-            const ds = isPdsMember ? items.find((it) => it.member === path.posix.basename(dsPath)) : items?.[0];
+            const ds = items?.[0];
             if (ds != null && "m4date" in ds) {
                 const { m4date, mtime, msec }: { m4date: string; mtime: string; msec: string } = ds;
                 const newTime = dayjs(`${m4date} ${mtime}:${msec}`).valueOf();

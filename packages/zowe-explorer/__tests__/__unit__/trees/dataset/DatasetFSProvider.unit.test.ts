@@ -756,7 +756,7 @@ describe("stat", () => {
         const res = await DatasetFSProvider.instance.stat(testUris.pdsMember);
         expect(lookupMock).toHaveBeenCalledWith(testUris.pdsMember, false);
         expect(lookupParentDirMock).toHaveBeenCalledWith(testUris.pdsMember);
-        expect(allMembersMock).toHaveBeenCalledWith("USER.DATA.PDS", { attributes: true });
+        expect(allMembersMock).toHaveBeenCalledWith("USER.DATA.PDS", { attributes: true, pattern: "MEMBER1" });
         expect(res).toStrictEqual({ ...fakePdsMember, mtime: dayjs("2024-08-08 12:30").valueOf() });
         expect(fakePdsMember.wasAccessed).toBe(false);
         lookupMock.mockRestore();
